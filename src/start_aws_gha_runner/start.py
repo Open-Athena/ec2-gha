@@ -273,3 +273,10 @@ class StartAWS(CreateCloudInstance):
         github_labels = list(mapping.values())
         output("mapping", json.dumps(mapping))
         output("instances", json.dumps(github_labels))
+
+        # For single instance use, output simplified values
+        if len(mapping) == 1:
+            instance_id = list(mapping.keys())[0]
+            label = list(mapping.values())[0]
+            output("instance-id", instance_id)
+            output("label", label)

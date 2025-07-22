@@ -23,6 +23,8 @@ This repository contains the code to start a GitHub Actions runner on an AWS EC2
 | ---- | ----------- |
 | mapping | A JSON object mapping instance IDs to unique GitHub runner labels. This is used in conjunction with the `instance_mapping` input when stopping. |
 | instances | A JSON list of the GitHub runner labels to be used in the 'runs-on' field |
+| label | The single runner label (only available when instance_count=1) |
+| instance-id | The EC2 instance ID (only available when instance_count=1) |
 ## Example usage
 ```yaml
 name: Start AWS GHA Runner
@@ -73,4 +75,8 @@ jobs:
         --instance-initiated-shutdown-behavior terminate
   env:
     GH_PAT: ${{ secrets.GH_PAT }}
+
+# For single instance use, you can use the simplified outputs
+- name: Use runner
+  runs-on: ${{ steps.aws-start.outputs.label }}
 ```
