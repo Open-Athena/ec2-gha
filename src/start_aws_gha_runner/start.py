@@ -87,6 +87,7 @@ class StartAWS(CreateCloudInstance):
             "MinCount": 1,
             "MaxCount": 1,
             "UserData": self._build_user_data(**user_data_params),
+            "InstanceInitiatedShutdownBehavior": "terminate",
         }
         if self.subnet_id != "":
             params["SubnetId"] = self.subnet_id
