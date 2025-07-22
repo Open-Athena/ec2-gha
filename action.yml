@@ -45,6 +45,12 @@ inputs:
     description: "The timeout in seconds to wait for the runner to come online as seen by the GitHub API. Defaults to 1200 seconds."
     required: true
     default: "1200"
+  aws_userdata:
+    description: "User data script to run on instance startup. Use this to configure the instance before the runner starts."
+    required: false
+  aws_key_name:
+    description: "Name of the EC2 key pair to use for SSH access"
+    required: false
 outputs:
   mapping:
     description: "A JSON object mapping instance IDs to unique GitHub runner labels. This is used in conjunction with the `instance_mapping` input when stopping."

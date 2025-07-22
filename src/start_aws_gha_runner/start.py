@@ -43,6 +43,10 @@ class StartAWS(CreateCloudInstance):
         The name of the IAM role to use. Defaults to an empty string.
     script : str
         The script to run on the instance. Defaults to an empty string.
+    userdata : str
+        Custom user data script to prepend to the runner setup. Defaults to an empty string.
+    key_name : str
+        The name of the EC2 key pair to use for SSH access. Defaults to an empty string.
 
     """
 
@@ -60,6 +64,8 @@ class StartAWS(CreateCloudInstance):
     security_group_id: str = ""
     iam_role: str = ""
     script: str = ""
+    userdata: str = ""
+    key_name: str = ""
 
     def _build_aws_params(self, user_data_params: dict) -> dict:
         """Build the parameters for the AWS API call.
@@ -88,6 +94,8 @@ class StartAWS(CreateCloudInstance):
             params["SecurityGroupIds"] = [self.security_group_id]
         if self.iam_role != "":
             params["IamInstanceProfile"] = {"Name": self.iam_role}
+        if self.key_name != "":
+            params["KeyName"] = self.key_name
         if len(self.tags) > 0:
             specs = {"ResourceType": "instance", "Tags": self.tags}
             params["TagSpecifications"] = [specs]
@@ -112,12 +120,26 @@ class StartAWS(CreateCloudInstance):
             "templates/user-script.sh.templ"
         )
         with template.open() as f:
-            template = f.read()
-            try:
-                parsed = Template(template)
-                return parsed.substitute(**kwargs)
-            except Exception as e:
-                raise Exception(f"Error parsing user data template: {e}")
+            template_content = f.read()
+
+        try:
+            parsed = Template(template_content)
+            runner_script = parsed.substitute(**kwargs)
+
+            # If custom userdata is provided, prepend it to the runner script
+            if self.userdata:
+                combined_script = f"""#!/bin/bash
+# Custom user data script
+{self.userdata}
+
+# Runner setup script
+{runner_script.replace('#!/bin/bash', '').strip()}
+"""
+                return combined_script
+            else:
+                return runner_script
+        except Exception as e:
+            raise Exception(f"Error parsing user data template: {e}")
 
     def _modify_root_disk_size(self, client, params: dict) -> dict:
         """ Modify the root disk size of the instance.
