@@ -91,8 +91,8 @@ class StartAWS(CreateCloudInstance):
         }
         if self.subnet_id != "":
             params["SubnetId"] = self.subnet_id
-        if self.security_group_id != "":
-            params["SecurityGroupIds"] = [self.security_group_id]
+        if self.security_group_id and self.security_group_id.strip():
+            params["SecurityGroupIds"] = [self.security_group_id.strip()]
         if self.iam_role != "":
             params["IamInstanceProfile"] = {"Name": self.iam_role}
         if self.key_name != "":
