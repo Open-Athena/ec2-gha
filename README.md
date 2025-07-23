@@ -66,13 +66,7 @@ jobs:
     aws_image_id: ami-0f7c4a792e3fb63c8
     aws_instance_type: g4dn.xlarge
     aws_home_dir: /home/ubuntu
-    aws_userdata: |
-      #!/bin/bash
-      # Configure instance to terminate on shutdown
-      INSTANCE_ID=$(ec2-metadata --instance-id | cut -d " " -f 2)
-      aws ec2 modify-instance-attribute \
-        --instance-id $INSTANCE_ID \
-        --instance-initiated-shutdown-behavior terminate
+    # Instance is automatically configured to terminate on shutdown
   env:
     GH_PAT: ${{ secrets.GH_PAT }}
 
