@@ -140,7 +140,7 @@ class StartAWS(CreateCloudInstance):
             else:
                 return runner_script
         except Exception as e:
-            raise Exception(f"Error parsing user data template: {e}")
+            raise Exception("Error parsing user data template") from e
 
     def _modify_root_disk_size(self, client, params: dict) -> dict:
         """ Modify the root disk size of the instance.
