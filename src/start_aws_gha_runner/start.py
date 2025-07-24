@@ -43,6 +43,10 @@ class StartAWS(CreateCloudInstance):
         The name of the IAM role to use. Defaults to an empty string.
     script : str
         The script to run on the instance. Defaults to an empty string.
+    userdata : str
+        Custom user data script to prepend to the runner setup. Defaults to an empty string.
+    key_name : str
+        The name of the EC2 key pair to use for SSH access. Defaults to an empty string.
 
     """
 
@@ -60,6 +64,8 @@ class StartAWS(CreateCloudInstance):
     security_group_id: str = ""
     iam_role: str = ""
     script: str = ""
+    userdata: str = ""
+    key_name: str = ""
 
     def _build_aws_params(self, user_data_params: dict) -> dict:
         """Build the parameters for the AWS API call.
@@ -81,13 +87,16 @@ class StartAWS(CreateCloudInstance):
             "MinCount": 1,
             "MaxCount": 1,
             "UserData": self._build_user_data(**user_data_params),
+            "InstanceInitiatedShutdownBehavior": "terminate",
         }
         if self.subnet_id != "":
             params["SubnetId"] = self.subnet_id
-        if self.security_group_id != "":
-            params["SecurityGroupIds"] = [self.security_group_id]
+        if self.security_group_id and self.security_group_id.strip():
+            params["SecurityGroupIds"] = [self.security_group_id.strip()]
         if self.iam_role != "":
             params["IamInstanceProfile"] = {"Name": self.iam_role}
+        if self.key_name != "":
+            params["KeyName"] = self.key_name
         if len(self.tags) > 0:
             specs = {"ResourceType": "instance", "Tags": self.tags}
             params["TagSpecifications"] = [specs]
@@ -108,16 +117,18 @@ class StartAWS(CreateCloudInstance):
             The user data script as a string.
 
         """
-        template = importlib.resources.files("gha_runner").joinpath(
+        template = importlib.resources.files("start_aws_gha_runner").joinpath(
             "templates/user-script.sh.templ"
         )
         with template.open() as f:
-            template = f.read()
-            try:
-                parsed = Template(template)
-                return parsed.substitute(**kwargs)
-            except Exception as e:
-                raise Exception(f"Error parsing user data template: {e}")
+            template_content = f.read()
+
+        try:
+            parsed = Template(template_content)
+            runner_script = parsed.substitute(**kwargs)
+            return runner_script
+        except Exception as e:
+            raise Exception("Error parsing user data template") from e
 
     def _modify_root_disk_size(self, client, params: dict) -> dict:
         """ Modify the root disk size of the instance.
@@ -205,6 +216,7 @@ class StartAWS(CreateCloudInstance):
                 "script": self.script,
                 "runner_release": self.runner_release,
                 "labels": labels,
+                "userdata": self.userdata,
             }
             params = self._build_aws_params(user_data_params)
             if self.root_device_size > 0:
@@ -251,3 +263,10 @@ class StartAWS(CreateCloudInstance):
         github_labels = list(mapping.values())
         output("mapping", json.dumps(mapping))
         output("instances", json.dumps(github_labels))
+
+        # For single instance use, output simplified values
+        if len(mapping) == 1:
+            instance_id = list(mapping.keys())[0]
+            label = list(mapping.values())[0]
+            output("instance-id", instance_id)
+            output("label", label)

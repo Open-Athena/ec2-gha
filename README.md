@@ -1,5 +1,6 @@
 # start_aws_gha_runner
 This repository contains the code to start a GitHub Actions runner on an AWS EC2 instance.
+
 ## Inputs
 | Input                 | Description                                                                                                        | Required for start | Default |
 |-----------------------|--------------------------------------------------------------------------------------------------------------------|------------------- |---------|
@@ -8,7 +9,7 @@ This repository contains the code to start a GitHub Actions runner on an AWS EC2
 | aws_image_id          | The machine AMI to use for your runner. This AMI can be a default but should have docker installed in the AMI.     | true               |         |
 | aws_instance_type     | The type of instance to use for your runner. For example: t2.micro, t4g.nano, etc. Will not start if not specified.| true               |         |
 | aws_region_name       | The AWS region name to use for your runner. Defaults to AWS_REGION                                                 | true               |         |
-| aws_root_device_size  | The root device size in GB to use for your runner.                                                                 | false              | The AMI default root disk size | 
+| aws_root_device_size  | The root device size in GB to use for your runner.                                                                 | false              | The AMI default root disk size |
 | aws_security_group_id | The AWS security group ID to use for your runner. Will use the account default security group if not specified.    | false              | The default AWS security group |
 | aws_subnet_id         | The AWS subnet ID to use for your runner. Will use the account default subnet if not specified.                    | false              | The default AWS subnet ID |
 | aws_tags              | The AWS tags to use for your runner, formatted as a JSON list. See `README` for more details.                      | false              |         |
@@ -16,12 +17,19 @@ This repository contains the code to start a GitHub Actions runner on an AWS EC2
 | instance_count        | The number of instances to create, defaults to 1                                                                   | false              | 1       |
 | repo     | The repo to run against. Will use the current repo if not specified.       | false    | The repo the runner is running in |
 | gh_timeout            | The timeout in seconds to wait for the runner to come online as seen by the GitHub API. Defaults to 1200 seconds.  | false              | 1200    |
+| aws_userdata          | User data script to run on instance startup. Use this to configure the instance before the runner starts.          | false              |         |
+| aws_key_name          | Name of the EC2 key pair to use for SSH access.                                                                   | false              |         |
+
 ## Outputs
 | Name | Description |
 | ---- | ----------- |
 | mapping | A JSON object mapping instance IDs to unique GitHub runner labels. This is used in conjunction with the `instance_mapping` input when stopping. |
 | instances | A JSON list of the GitHub runner labels to be used in the 'runs-on' field |
+| label | The single runner label (only available when instance_count=1) |
+| instance-id | The EC2 instance ID (only available when instance_count=1) |
+
 ## Example usage
+
 ```yaml
 name: Start AWS GHA Runner
 on:
@@ -51,3 +59,8 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
 ```
+
+[Open-Athena/ec2] also shows [example usage][ec2 example] of `aws_userdata`, to automatically shut down the instance.
+
+[Open-Athena/ec2]: https://github.com/Open-Athena/ec2
+[ec2 example]: https://github.com/Open-Athena/ec2/blob/94e815ac681ba5836ce07cda894d53d3dd900afd/.github/workflows/runner.yml#L83
