@@ -1,5 +1,6 @@
 # start_aws_gha_runner
 This repository contains the code to start a GitHub Actions runner on an AWS EC2 instance.
+
 ## Inputs
 | Input                 | Description                                                                                                        | Required for start | Default |
 |-----------------------|--------------------------------------------------------------------------------------------------------------------|------------------- |---------|
@@ -18,6 +19,7 @@ This repository contains the code to start a GitHub Actions runner on an AWS EC2
 | gh_timeout            | The timeout in seconds to wait for the runner to come online as seen by the GitHub API. Defaults to 1200 seconds.  | false              | 1200    |
 | aws_userdata          | User data script to run on instance startup. Use this to configure the instance before the runner starts.          | false              |         |
 | aws_key_name          | Name of the EC2 key pair to use for SSH access.                                                                   | false              |         |
+
 ## Outputs
 | Name | Description |
 | ---- | ----------- |
@@ -25,7 +27,9 @@ This repository contains the code to start a GitHub Actions runner on an AWS EC2
 | instances | A JSON list of the GitHub runner labels to be used in the 'runs-on' field |
 | label | The single runner label (only available when instance_count=1) |
 | instance-id | The EC2 instance ID (only available when instance_count=1) |
+
 ## Example usage
+
 ```yaml
 name: Start AWS GHA Runner
 on:
@@ -56,21 +60,7 @@ jobs:
           GH_PAT: ${{ secrets.GH_PAT }}
 ```
 
-### Example with User Data
+[Open-Athena/ec2] also shows [example usage][ec2 example] of `aws_userdata`, to automatically shut down the instance.
 
-```yaml
-- name: Create self-terminating runner
-  id: aws-start
-  uses: omsf/start-aws-gha-runner@v1.0.0
-  with:
-    aws_image_id: ami-0f7c4a792e3fb63c8
-    aws_instance_type: g4dn.xlarge
-    aws_home_dir: /home/ubuntu
-    # Instance is automatically configured to terminate on shutdown
-  env:
-    GH_PAT: ${{ secrets.GH_PAT }}
-
-# For single instance use, you can use the simplified outputs
-- name: Use runner
-  runs-on: ${{ steps.aws-start.outputs.label }}
-```
+[Open-Athena/ec2]: https://github.com/Open-Athena/ec2
+[ec2 example]: https://github.com/Open-Athena/ec2/blob/94e815ac681ba5836ce07cda894d53d3dd900afd/.github/workflows/runner.yml#L83
