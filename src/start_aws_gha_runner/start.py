@@ -117,7 +117,7 @@ class StartAWS(CreateCloudInstance):
             The user data script as a string.
 
         """
-        template = importlib.resources.files("gha_runner").joinpath(
+        template = importlib.resources.files("start_aws_gha_runner").joinpath(
             "templates/user-script.sh.templ"
         )
         with template.open() as f:
@@ -126,19 +126,7 @@ class StartAWS(CreateCloudInstance):
         try:
             parsed = Template(template_content)
             runner_script = parsed.substitute(**kwargs)
-
-            # If custom userdata is provided, prepend it to the runner script
-            if self.userdata:
-                combined_script = f"""#!/bin/bash
-# Custom user data script
-{self.userdata}
-
-# Runner setup script
-{runner_script.replace('#!/bin/bash', '').strip()}
-"""
-                return combined_script
-            else:
-                return runner_script
+            return runner_script
         except Exception as e:
             raise Exception("Error parsing user data template") from e
 
@@ -228,6 +216,7 @@ class StartAWS(CreateCloudInstance):
                 "script": self.script,
                 "runner_release": self.runner_release,
                 "labels": labels,
+                "userdata": self.userdata,
             }
             params = self._build_aws_params(user_data_params)
             if self.root_device_size > 0:

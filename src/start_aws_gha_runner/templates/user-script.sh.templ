@@ -1,0 +1,28 @@
+#!/bin/bash
+set -e
+
+$userdata
+
+echo "[$$(date '+%Y-%m-%d %H:%M:%S')] GitHub runner setup starting"
+echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Working directory: $homedir"
+cd "$homedir"
+echo "$script" > pre-runner-script.sh
+echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Running pre-runner script"
+source pre-runner-script.sh
+export RUNNER_ALLOW_RUNASROOT=1
+# We will get the latest release from the GitHub API
+echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Downloading runner from: $runner_release"
+curl -L $runner_release -o runner.tar.gz
+echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Extracting runner"
+tar xzf runner.tar.gz
+# Fix home directory ownership after extraction; otherwise it will end up as 1001:docker, and SSH'ing in (to debug) won't work.
+echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Fixing home directory ownership after runner extraction"
+if [ -n "$$USER" ] && [ "$$USER" != "root" ]; then
+    chown $$USER:$$USER $homedir
+fi
+echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Configuring runner for repo: $repo with labels: $labels"
+./config.sh --url https://github.com/$repo --token $token --labels $labels --ephemeral
+echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Starting runner"
+# Create marker file for cleanup service
+touch /var/run/github-runner-started
+./run.sh
