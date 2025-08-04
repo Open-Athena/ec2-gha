@@ -1,0 +1,8 @@
+name: Demo – toy GPU workload, optional sleep (for debugging)
+on:
+  workflow_dispatch:
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Placeholder workflow – being developed in \#2 / rw/hooks branch"
