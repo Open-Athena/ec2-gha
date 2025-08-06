@@ -117,7 +117,7 @@ class StartAWS(CreateCloudInstance):
             The user data script as a string.
 
         """
-        template = importlib.resources.files("start_aws_gha_runner").joinpath(
+        template = importlib.resources.files("ec2_gha").joinpath(
             "templates/user-script.sh.templ"
         )
         with template.open() as f:

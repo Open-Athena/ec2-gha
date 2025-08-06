@@ -1,5 +1,5 @@
 [project]
-name = "start_aws_gha_runner"
+name = "ec2_gha"
 version = "1.0.0"
 description = "Start an AWS GitHub Actions Runner"
 readme = "README.md"
@@ -19,7 +19,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-start_aws_gha_runner = ["*.templ", "templates/*.templ"]
+ec2_gha = ["*.templ", "templates/*.templ"]
 
 [tool.pytest.ini_options]
 markers = ["slow: marks test as slow"]
