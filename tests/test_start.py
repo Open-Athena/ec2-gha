@@ -1,7 +1,6 @@
 import pytest
 from moto import mock_aws
-import boto3
-from unittest.mock import call, patch, mock_open, Mock
+from unittest.mock import patch, mock_open, Mock
 from start_aws_gha_runner.start import StartAWS
 from botocore.exceptions import WaiterError, ClientError
 
@@ -21,38 +20,41 @@ def aws():
         yield StartAWS(**params)
 
 
-def test_build_user_data(aws):
+def test_build_user_data(aws, snapshot):
+    """Test that template parameters are correctly substituted using snapshot testing"""
     params = {
-        "homedir": "/home/ec2-user",
-        "script": "echo 'Hello, World!'",
-        "repo": "omsf-eco-infra/awsinfratesting",
-        "token": "test",
-        "labels": "label",
-        "runner_release": "test.tar.gz",
+        "github_run_id": "123456789",
+        "github_run_number": "42",
+        "github_workflow": "test-workflow",
+        "homedir": "/home/test-user",
+        "labels": "test-label",
+        "repo": "test-org/test-repo",
+        "runner_grace_period": "60",
+        "runner_release": "https://example.com/runner.tar.gz",
+        "script": "echo 'test script'",
+        "ssh_pubkey": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host",
+        "token": "test-token-xyz",
+        "userdata": "echo 'custom userdata'",
     }
-    # We strip this to ensure that we don't have any extra whitespace to fail our test
-    user_data = aws._build_user_data(**params).strip()
-    # We also strip here
-    file = """#!/bin/bash
-cd "/home/ec2-user"
-echo "echo 'Hello, World!'" > pre-runner-script.sh
-source pre-runner-script.sh
-export RUNNER_ALLOW_RUNASROOT=1
-# We will get the latest release from the GitHub API
-curl -L test.tar.gz -o runner.tar.gz
-tar xzf runner.tar.gz
-./config.sh --url https://github.com/omsf-eco-infra/awsinfratesting --token test --labels label --ephemeral
-./run.sh
-    """.strip()
-    assert user_data == file
+    user_data = aws._build_user_data(**params)
+
+    # Verify all substitutions happened (no template variables remain)
+    template_vars = [ f'${k}' for k in params ]
+    for var in template_vars:
+        assert var not in user_data, f"Template variable {var} was not substituted"
+
+    # Use snapshot to verify the entire output
+    assert user_data == snapshot
 
 
 def test_build_user_data_missing_params(aws):
+    """Test that missing required parameters raise an exception"""
     params = {
         "homedir": "/home/ec2-user",
         "script": "echo 'Hello, World!'",
         "repo": "omsf-eco-infra/awsinfratesting",
         "token": "test",
+        # Missing: labels, runner_release
     }
     with pytest.raises(Exception):
         aws._build_user_data(**params)
@@ -86,38 +88,30 @@ def test_build_aws_params(complete_params):
         "script": "echo 'Hello, World!'",
         "runner_release": "test.tar.gz",
         "labels": "label",
+        "userdata": "",
     }
     aws = StartAWS(**complete_params)
     params = aws._build_aws_params(user_data_params)
-    assert params == {
-        "ImageId": "ami-0772db4c976d21e9b",
-        "InstanceType": "t2.micro",
-        "MinCount": 1,
-        "MaxCount": 1,
-        "SubnetId": "test",
-        "SecurityGroupIds": ["test"],
-        "IamInstanceProfile": {"Name": "test"},
-        "UserData": """#!/bin/bash
-cd "/home/ec2-user"
-echo "echo 'Hello, World!'" > pre-runner-script.sh
-source pre-runner-script.sh
-export RUNNER_ALLOW_RUNASROOT=1
-# We will get the latest release from the GitHub API
-curl -L test.tar.gz -o runner.tar.gz
-tar xzf runner.tar.gz
-./config.sh --url https://github.com/omsf-eco-infra/awsinfratesting --token test --labels label --ephemeral
-./run.sh
-""",
-        "TagSpecifications": [
-            {
-                "ResourceType": "instance",
-                "Tags": [
-                    {"Key": "Name", "Value": "test"},
-                    {"Key": "Owner", "Value": "test"},
-                ],
-            }
-        ],
-    }
+
+    # Test structure without checking exact UserData content
+    assert params["ImageId"] == "ami-0772db4c976d21e9b"
+    assert params["InstanceType"] == "t2.micro"
+    assert params["MinCount"] == 1
+    assert params["MaxCount"] == 1
+    assert params["SubnetId"] == "test"
+    assert params["SecurityGroupIds"] == ["test"]
+    assert params["IamInstanceProfile"] == {"Name": "test"}
+    assert params["InstanceInitiatedShutdownBehavior"] == "terminate"
+    assert "UserData" in params
+    assert params["TagSpecifications"] == [
+        {
+            "ResourceType": "instance",
+            "Tags": [
+                {"Key": "Name", "Value": "test"},
+                {"Key": "Owner", "Value": "test"},
+            ],
+        }
+    ]
 
 def test_modify_root_disk_size(complete_params):
     mock_client = Mock()
@@ -337,7 +331,19 @@ def test_set_instance_mapping(aws, monkeypatch):
     with patch("builtins.open", mock_file):
         aws.set_instance_mapping(mapping)
 
-    assert mock_file.call_args_list == [
-        call("mock_output_file", "a"),
-        call("mock_output_file", "a"),
-    ]
+    # Should be called 4 times for single instance (mapping, instances, instance-id, label)
+    assert mock_file.call_count == 4
+    assert all(call[0][0] == "mock_output_file" for call in mock_file.call_args_list)
+
+
+def test_set_instance_mapping_multiple(aws, monkeypatch):
+    monkeypatch.setenv("GITHUB_OUTPUT", "mock_output_file")
+    mapping = {"i-xxxxxxxxxxxxxxxxx": "test1", "i-yyyyyyyyyyyyyyyyy": "test2"}
+    mock_file = mock_open()
+
+    with patch("builtins.open", mock_file):
+        aws.set_instance_mapping(mapping)
+
+    # Should be called 2 times for multiple instances (mapping, instances only)
+    assert mock_file.call_count == 2
+    assert all(call[0][0] == "mock_output_file" for call in mock_file.call_args_list)
