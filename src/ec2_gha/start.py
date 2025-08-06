@@ -97,8 +97,62 @@ class StartAWS(CreateCloudInstance):
             params["IamInstanceProfile"] = {"Name": self.iam_instance_profile}
         if self.key_name != "":
             params["KeyName"] = self.key_name
-        if len(self.tags) > 0:
-            specs = {"ResourceType": "instance", "Tags": self.tags}
+        # Add default tags if not already present
+        default_tags = []
+        existing_keys = {tag["Key"] for tag in self.tags}
+        import os
+
+        # Add Name tag if not provided
+        if "Name" not in existing_keys:
+            # Try to create a sensible default Name tag
+            name_parts = []
+
+            # Use repository basename if available
+            if os.environ.get("GITHUB_REPOSITORY"):
+                repo_basename = os.environ["GITHUB_REPOSITORY"].split("/")[-1]
+                name_parts.append(repo_basename)
+
+            # Add workflow name if available
+            if os.environ.get("GITHUB_WORKFLOW"):
+                # Try to extract just the filename without extension from workflow ref
+                workflow_ref = os.environ.get("GITHUB_WORKFLOW_REF", "")
+                if workflow_ref:
+                    # Extract filename from path like "owner/repo/.github/workflows/test.yml@ref"
+                    import re
+                    match = re.search(r'/([^/@]+)\.(yml|yaml)@', workflow_ref)
+                    if match:
+                        name_parts.append(match.group(1))
+                    else:
+                        name_parts.append(os.environ["GITHUB_WORKFLOW"])
+                else:
+                    name_parts.append(os.environ["GITHUB_WORKFLOW"])
+
+            # Add run number if available
+            if os.environ.get("GITHUB_RUN_NUMBER"):
+                name_parts.append(f"#{os.environ['GITHUB_RUN_NUMBER']}")
+
+            # Create Name tag if we have any parts
+            if name_parts:
+                default_tags.append({"Key": "Name", "Value": "/".join(name_parts)})
+
+        # Add repository tag if available
+        if "repository" not in existing_keys and os.environ.get("GITHUB_REPOSITORY"):
+            default_tags.append({"Key": "repository", "Value": os.environ["GITHUB_REPOSITORY"]})
+
+        # Add workflow tag if available
+        if "workflow" not in existing_keys and os.environ.get("GITHUB_WORKFLOW"):
+            default_tags.append({"Key": "workflow", "Value": os.environ["GITHUB_WORKFLOW"]})
+
+        # Add run URL tag if available
+        if "gha_url" not in existing_keys and os.environ.get("GITHUB_SERVER_URL") and os.environ.get("GITHUB_REPOSITORY") and os.environ.get("GITHUB_RUN_ID"):
+            gha_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+            default_tags.append({"Key": "gha_url", "Value": gha_url})
+
+        # Combine user tags with default tags
+        all_tags = self.tags + default_tags
+
+        if len(all_tags) > 0:
+            specs = {"ResourceType": "instance", "Tags": all_tags}
             params["TagSpecifications"] = [specs]
 
         return params
