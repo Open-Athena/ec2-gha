@@ -5,4 +5,4 @@ RUN mkdir app
 COPY . /app
 RUN pip install --no-cache-dir /app
 
-CMD [ "python", "/app/src/start_aws_gha_runner/" ]
+CMD [ "python", "-m", "ec2_gha" ]

@@ -1,4 +1,4 @@
-name: start-aws-gha-runner
+name: ec2-gha
 description: A simple GitHub Action for creating a self-hosted runner on AWS.
 runs:
   using: "docker"
