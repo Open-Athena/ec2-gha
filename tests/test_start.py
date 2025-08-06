@@ -2,7 +2,7 @@ import pytest
 from moto import mock_aws
 import boto3
 from unittest.mock import patch, mock_open, Mock
-from start_aws_gha_runner.start import StartAWS
+from ec2_gha.start import StartAWS
 from botocore.exceptions import WaiterError, ClientError
 
 
