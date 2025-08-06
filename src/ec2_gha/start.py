@@ -1,5 +1,6 @@
 import importlib.resources
 from dataclasses import dataclass, field
+from os import environ
 from string import Template
 import json
 
@@ -27,6 +28,8 @@ class StartAWS(CreateCloudInstance):
         The name of the region to use.
     repo : str
         The repository to use.
+    cloudwatch_logs_group : str
+        CloudWatch Logs group name for streaming runner logs. Defaults to an empty string.
     gh_runner_tokens : list[str]
         A list of GitHub runner tokens. Defaults to an empty list.
     iam_instance_profile : str
@@ -35,12 +38,22 @@ class StartAWS(CreateCloudInstance):
         The name of the EC2 key pair to use for SSH access. Defaults to an empty string.
     labels : str
         A comma-separated list of labels to apply to the runner. Defaults to an empty string.
+    max_instance_lifetime : str
+        Maximum instance lifetime in minutes before automatic shutdown. Defaults to "360" (6 hours).
     root_device_size : int
         The size of the root device. Defaults to 0 which uses the default.
+    runner_initial_grace_period : str
+        Grace period in seconds before terminating if no jobs have started. Defaults to "180".
+    runner_grace_period : str
+        Grace period in seconds before terminating instance after last job completes. Defaults to "60".
+    runner_poll_interval : str
+        How often (in seconds) to check termination conditions. Defaults to "10".
     script : str
         The script to run on the instance. Defaults to an empty string.
     security_group_id : str
         The ID of the security group to use. Defaults to an empty string.
+    ssh_pubkey : str
+        SSH public key to add to authorized_keys. Defaults to an empty string.
     subnet_id : str
         The ID of the subnet to use. Defaults to an empty string.
     tags : list[dict[str, str]]
@@ -55,14 +68,20 @@ class StartAWS(CreateCloudInstance):
     instance_type: str
     region_name: str
     repo: str
+    cloudwatch_logs_group: str = ""
     gh_runner_tokens: list[str] = field(default_factory=list)
     iam_instance_profile: str = ""
     key_name: str = ""
     labels: str = ""
+    max_instance_lifetime: str = "360"
     root_device_size: int = 0
+    runner_grace_period: str = "60"
+    runner_initial_grace_period: str = "180"
+    runner_poll_interval: str = "10"
     runner_release: str = ""
     script: str = ""
     security_group_id: str = ""
+    ssh_pubkey: str = ""
     subnet_id: str = ""
     tags: list[dict[str, str]] = field(default_factory=list)
     userdata: str = ""
@@ -97,8 +116,72 @@ class StartAWS(CreateCloudInstance):
             params["IamInstanceProfile"] = {"Name": self.iam_instance_profile}
         if self.key_name != "":
             params["KeyName"] = self.key_name
-        if len(self.tags) > 0:
-            specs = {"ResourceType": "instance", "Tags": self.tags}
+        # Add default tags if not already present
+        default_tags = []
+        existing_keys = {tag["Key"] for tag in self.tags}
+        import os
+
+        # Add Name tag if not provided
+        if "Name" not in existing_keys:
+            # Try to create a sensible default Name tag
+            name_parts = []
+
+            # Use repository basename if available
+            if os.environ.get("GITHUB_REPOSITORY"):
+                repo_basename = os.environ["GITHUB_REPOSITORY"].split("/")[-1]
+                name_parts.append(repo_basename)
+
+            # Extract the workflow filename (sans extension) and ref
+            workflow_ref = os.environ.get("GITHUB_WORKFLOW_REF", "")
+            if workflow_ref:
+                # Extract filename from path like "owner/repo/.github/workflows/test.yml@ref"
+                import re
+                m = re.search(r'/(?P<name>[^/@]+)\.(yml|yaml)@(?P<ref>[^@]+)$', workflow_ref)
+                if m:
+                    # Clean up the ref - remove "refs/heads/" prefix if present
+                    ref = m['ref']
+                    if ref.startswith('refs/heads/'):
+                        ref = ref[11:]  # Remove "refs/heads/" prefix
+                    elif ref.startswith('refs/tags/'):
+                        ref = ref[10:]  # Remove "refs/tags/" prefix
+                    name_parts.append(f"{m['name']}@{ref}")
+                else:
+                    name_parts.append("???")
+            else:
+                name_parts.append("???")
+
+            # Add run number if available
+            if os.environ.get("GITHUB_RUN_NUMBER"):
+                # The # acts as separator, don't add a slash before it
+                run_number = f"#{os.environ['GITHUB_RUN_NUMBER']}"
+                # Join existing parts with "/" then append run number directly
+                if name_parts:
+                    name_value = "/".join(name_parts) + run_number
+                else:
+                    name_value = run_number
+                default_tags.append({"Key": "Name", "Value": name_value})
+            elif name_parts:
+                # No run number, just join the parts
+                default_tags.append({"Key": "Name", "Value": "/".join(name_parts)})
+
+        # Add repository tag if available
+        if "repository" not in existing_keys and os.environ.get("GITHUB_REPOSITORY"):
+            default_tags.append({"Key": "Repository", "Value": os.environ["GITHUB_REPOSITORY"]})
+
+        # Add workflow tag if available
+        if "workflow" not in existing_keys and os.environ.get("GITHUB_WORKFLOW"):
+            default_tags.append({"Key": "Workflow", "Value": os.environ["GITHUB_WORKFLOW"]})
+
+        # Add run URL tag if available
+        if "gha_url" not in existing_keys and os.environ.get("GITHUB_SERVER_URL") and os.environ.get("GITHUB_REPOSITORY") and os.environ.get("GITHUB_RUN_ID"):
+            gha_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+            default_tags.append({"Key": "URL", "Value": gha_url})
+
+        # Combine user tags with default tags
+        all_tags = self.tags + default_tags
+
+        if len(all_tags) > 0:
+            specs = {"ResourceType": "instance", "Tags": all_tags}
             params["TagSpecifications"] = [specs]
 
         return params
@@ -192,18 +275,25 @@ class StartAWS(CreateCloudInstance):
         id_dict = {}
         for token in self.gh_runner_tokens:
             label = gh.GitHubInstance.generate_random_label()
-            labels = self.labels
-            if labels == "":
-                labels = label
-            else:
-                labels = self.labels + "," + label
+            # Combine user labels with the generated runner label
+            labels = f"{self.labels},{label}" if self.labels else label
+
             user_data_params = {
-                "token": token,
-                "repo": self.repo,
+                "cloudwatch_logs_group": self.cloudwatch_logs_group,
+                "github_workflow": environ.get("GITHUB_WORKFLOW", ""),
+                "github_run_id": environ.get("GITHUB_RUN_ID", ""),
+                "github_run_number": environ.get("GITHUB_RUN_NUMBER", ""),
                 "homedir": self.home_dir,
-                "script": self.script,
-                "runner_release": self.runner_release,
                 "labels": labels,
+                "max_instance_lifetime": self.max_instance_lifetime,
+                "repo": self.repo,
+                "runner_grace_period": self.runner_grace_period,
+                "runner_initial_grace_period": self.runner_initial_grace_period,
+                "runner_poll_interval": self.runner_poll_interval,
+                "runner_release": self.runner_release,
+                "script": self.script,
+                "ssh_pubkey": self.ssh_pubkey,
+                "token": token,
                 "userdata": self.userdata,
             }
             params = self._build_aws_params(user_data_params)

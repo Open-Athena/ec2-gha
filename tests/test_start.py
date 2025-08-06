@@ -60,7 +60,7 @@ def test_build_user_data_missing_params(aws):
 @pytest.fixture(scope="function")
 def complete_params():
     params = {
-        "gh_runner_tokens": ["testing"],
+        "gh_runner_tokens": ["test"],
         "home_dir": "/home/ec2-user",
         "iam_instance_profile": "test",
         "image_id": "ami-0772db4c976d21e9b",
@@ -68,17 +68,24 @@ def complete_params():
         "region_name": "us-east-1",
         "repo": "omsf-eco-infra/awsinfratesting",
         "root_device_size": 100,
-        "runner_release": "testing",
+        "runner_release": "test.tar.gz",
         "security_group_id": "test",
         "subnet_id": "test",
         "tags": [
             {"Key": "Name", "Value": "test"},
             {"Key": "Owner", "Value": "test"},
         ],
+        "labels": "",
     }
     yield params
 
 
+@patch.dict('os.environ', {
+    'GITHUB_REPOSITORY': 'Open-Athena/ec2-gha',
+    'GITHUB_WORKFLOW': 'CI',
+    'GITHUB_SERVER_URL': 'https://github.com',
+    'GITHUB_RUN_ID': '16725250800'
+})
 def test_build_aws_params(complete_params):
     user_data_params = {
         "homedir": "/home/ec2-user",
@@ -108,6 +115,9 @@ def test_build_aws_params(complete_params):
             "Tags": [
                 {"Key": "Name", "Value": "test"},
                 {"Key": "Owner", "Value": "test"},
+                {"Key": "Repository", "Value": "Open-Athena/ec2-gha"},
+                {"Key": "Workflow", "Value": "CI"},
+                {"Key": "URL", "Value": "https://github.com/Open-Athena/ec2-gha/actions/runs/16725250800"},
             ],
         }
     ]
