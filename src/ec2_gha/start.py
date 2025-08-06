@@ -117,9 +117,7 @@ class StartAWS(CreateCloudInstance):
             The user data script as a string.
 
         """
-        template = importlib.resources.files("ec2_gha").joinpath(
-            "templates/user-script.sh.templ"
-        )
+        template = importlib.resources.files("ec2_gha").joinpath("templates/user-script.sh.templ")
         with template.open() as f:
             template_content = f.read()
 
@@ -131,7 +129,7 @@ class StartAWS(CreateCloudInstance):
             raise Exception("Error parsing user data template") from e
 
     def _modify_root_disk_size(self, client, params: dict) -> dict:
-        """ Modify the root disk size of the instance.
+        """Modify the root disk size of the instance.
 
         Parameters
         ----------
@@ -179,27 +177,17 @@ class StartAWS(CreateCloudInstance):
             A dictionary of instance IDs and labels.
         """
         if not self.gh_runner_tokens:
-            raise ValueError(
-                "No GitHub runner tokens provided, cannot create instances."
-            )
+            raise ValueError("No GitHub runner tokens provided, cannot create instances.")
         if not self.runner_release:
-            raise ValueError(
-                "No runner release provided, cannot create instances."
-            )
+            raise ValueError("No runner release provided, cannot create instances.")
         if not self.home_dir:
-            raise ValueError(
-                "No home directory provided, cannot create instances."
-            )
+            raise ValueError("No home directory provided, cannot create instances.")
         if not self.image_id:
             raise ValueError("No image ID provided, cannot create instances.")
         if not self.instance_type:
-            raise ValueError(
-                "No instance type provided, cannot create instances."
-            )
+            raise ValueError("No instance type provided, cannot create instances.")
         if not self.region_name:
-            raise ValueError(
-                "No region name provided, cannot create instances."
-            )
+            raise ValueError("No region name provided, cannot create instances.")
         ec2 = boto3.client("ec2", region_name=self.region_name)
         id_dict = {}
         for token in self.gh_runner_tokens:

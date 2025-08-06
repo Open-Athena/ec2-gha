@@ -1,8 +1,10 @@
-import pytest
-from moto import mock_aws
 from unittest.mock import patch, mock_open, Mock
-from ec2_gha.start import StartAWS
+
+import pytest
 from botocore.exceptions import WaiterError, ClientError
+from moto import mock_aws
+
+from ec2_gha.start import StartAWS
 
 
 @pytest.fixture(scope="function")
@@ -54,6 +56,7 @@ def test_build_user_data_missing_params(aws):
     with pytest.raises(Exception):
         aws._build_user_data(**params)
 
+
 @pytest.fixture(scope="function")
 def complete_params():
     params = {
@@ -74,6 +77,7 @@ def complete_params():
         ],
     }
     yield params
+
 
 def test_build_aws_params(complete_params):
     user_data_params = {
@@ -107,6 +111,7 @@ def test_build_aws_params(complete_params):
             ],
         }
     ]
+
 
 def test_modify_root_disk_size(complete_params):
     mock_client = Mock()
@@ -172,6 +177,7 @@ def test_modify_root_disk_size(complete_params):
     }
     assert out == expected_output
 
+
 def test_modify_root_disk_size_permission_error(complete_params):
     mock_client = Mock()
 
@@ -187,6 +193,7 @@ def test_modify_root_disk_size_permission_error(complete_params):
         aws._modify_root_disk_size(mock_client, {})
 
     assert 'AccessDenied' in str(exc_info.value)
+
 
 def test_modify_root_disk_size_no_change(complete_params):
     mock_client = Mock()
@@ -227,6 +234,7 @@ def test_modify_root_disk_size_no_change(complete_params):
 
     # With root_device_size = 0, no modifications should be made
     assert result == input_params
+
 
 def test_create_instance_with_labels(aws):
     aws.labels = "test"
