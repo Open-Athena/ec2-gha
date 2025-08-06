@@ -55,7 +55,7 @@ def main():
         count=instance_count,
         timeout=timeout,
     )
-    # This will output the instance ids for using workflow sytnax
+    # This will output the instance ids for using workflow syntax
     deployment.start_runner_instances()
 
 
