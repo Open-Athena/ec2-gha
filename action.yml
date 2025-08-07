@@ -62,6 +62,9 @@ inputs:
   runner_registration_timeout:
     description: "Maximum seconds to wait for runner to register with GitHub (falls back to vars.RUNNER_REGISTRATION_TIMEOUT, then 360 = 6 minutes)"
     required: false
+  ssh_pubkey:
+    description: "SSH public key to add to authorized_keys for debugging access"
+    required: false
 outputs:
   mapping:
     description: "A JSON object mapping instance IDs to unique GitHub runner labels. This is used in conjunction with the `instance_mapping` input when stopping."

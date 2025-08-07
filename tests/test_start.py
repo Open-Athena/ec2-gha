@@ -46,6 +46,7 @@ def aws_params_user_data():
         "runner_release": "test.tar.gz",
         "runner_registration_timeout": "300",
         "script": "echo 'Hello, World!'",
+        "ssh_pubkey": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host",
         "token": "test",
         "userdata": "",
     }

@@ -306,6 +306,7 @@ class StartAWS(CreateCloudInstance):
                 "runner_registration_timeout": environ.get("INPUT_RUNNER_REGISTRATION_TIMEOUT", "").strip() or RUNNER_REGISTRATION_TIMEOUT,
                 "runner_release": self.runner_release,
                 "script": self.script,
+                "ssh_pubkey": self.ssh_pubkey,
                 "token": token,
                 "userdata": self.userdata,
             }
