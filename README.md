@@ -144,6 +144,7 @@ jobs:
     steps:
       - run: echo "Evaluating results"
 ```
+(see also [demo-job-seq], [demo-archs], [demo-matrix-wide])
 
 ### How Termination Works <a id="termination"></a>
 
@@ -531,7 +532,9 @@ This repo borrows from or reuses:
 - [related-sciences/gce-github-runner] (self-terminating GCE runner, using [job hooks][hooks])
 
 [`runner.yml`]: .github/workflows/runner.yml
-[demo-multi-job.yml]: .github/workflows/demo-multi-job.yml
+[demo-job-seq]: .github/workflows/demo-job-seq.yml
+[demo-archs]: .github/workflows/demo-archs.yml
+[demo-matrix-wide]: .github/workflows/demo-matrix-wide.yml
 [aws-actions/configure-aws-credentials]: https://github.com/aws-actions/configure-aws-credentials
 [hooks]: https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/run-scripts
 [omsf/start-aws-gha-runner]: https://github.com/omsf/start-aws-gha-runner
