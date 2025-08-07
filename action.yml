@@ -59,6 +59,9 @@ inputs:
     description: "Grace period in seconds before terminating instance if no jobs start (default 120)"
     required: false
     default: "120"
+  ssh_pubkey:
+    description: "SSH public key to add to authorized_keys for debugging access"
+    required: false
 outputs:
   mapping:
     description: "A JSON object mapping instance IDs to unique GitHub runner labels. This is used in conjunction with the `instance_mapping` input when stopping."

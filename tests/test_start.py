@@ -40,6 +40,7 @@ def test_build_user_data(aws):
         "runner_grace_period": "60",
         "runner_release": "https://example.com/runner.tar.gz",
         "script": "echo 'test script'",
+        "ssh_pubkey": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host",
         "token": "test-token-xyz",
         "userdata": "echo 'custom userdata'",
     }
@@ -60,6 +61,7 @@ def test_build_user_data(aws):
     assert "source pre-runner-script.sh" in lines
     assert "export RUNNER_ALLOW_RUNASROOT=1" in lines
     assert "curl -L https://example.com/runner.tar.gz -o runner.tar.gz" in lines
+    assert '    echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host" >> "/home/test-user/.ssh/authorized_keys"' in lines
     # Check that hook scripts are created inline
     assert "cat > /usr/local/bin/job-started-hook.sh" in user_data
     assert "cat > /usr/local/bin/job-completed-hook.sh" in user_data
@@ -133,6 +135,7 @@ def test_build_aws_params(complete_params):
         "runner_initial_grace_period": "180",
         "runner_release": "test.tar.gz",
         "script": "echo 'Hello, World!'",
+        "ssh_pubkey": "",
         "token": "test",
         "userdata": "",
     }
