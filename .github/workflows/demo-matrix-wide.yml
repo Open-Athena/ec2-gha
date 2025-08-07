@@ -1,8 +1,35 @@
 name: Demo – matrix on single runner
 on:
   workflow_dispatch:
+  workflow_call:   # Tested by `demos.yml`
+permissions:
+  id-token: write  # Required for AWS OIDC authentication
+  contents: read   # Required for actions/checkout
 jobs:
-  placeholder:
-    runs-on: ubuntu-latest
+  ec2:
+    uses: ./.github/workflows/runner.yml
+    secrets: inherit
+  test-matrix:
+    needs: ec2
+    runs-on: ${{ needs.ec2.outputs.id }}
+    name: Test on ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-20.04, ubuntu-22.04, ubuntu-24.04]
     steps:
-      - run: echo "Placeholder workflow – being developed in \#2 / rw/hooks branch"
+      - name: Test on ${{ matrix.os }}
+        run: |
+          echo "Testing on ${{ matrix.os }}"
+          echo "Runner: $(hostname)"
+          echo "Time: $(date)"
+          echo "Simulating work..."
+          sleep 10
+          echo "Done!"
+      - name: Show system info
+        run: |
+          echo "=== System Information ==="
+          uname -a
+          echo "=== CPU Info ==="
+          lscpu | head -10
+          echo "=== Memory Info ==="
+          free -h
