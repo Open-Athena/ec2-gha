@@ -279,6 +279,7 @@ class StartAWS(CreateCloudInstance):
             labels = f"{self.labels},{label}" if self.labels else label
 
             user_data_params = {
+                "cloudwatch_logs_group": self.cloudwatch_logs_group,
                 "github_workflow": environ.get("GITHUB_WORKFLOW", ""),
                 "github_run_id": environ.get("GITHUB_RUN_ID", ""),
                 "github_run_number": environ.get("GITHUB_RUN_NUMBER", ""),

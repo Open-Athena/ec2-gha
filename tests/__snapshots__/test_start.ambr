@@ -11,6 +11,93 @@
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] Setting up maximum lifetime timeout: ${MAX_LIFETIME_MINUTES} minutes"
   nohup bash -c "sleep ${MAX_LIFETIME_MINUTES}m && echo '[$(date)] Maximum lifetime reached' && shutdown -h now" > /var/log/max-lifetime.log 2>&1 &
   
+  # Configure CloudWatch Logs if enabled
+  if [ "" != "" ]; then
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Installing CloudWatch agent"
+      # Use a subshell to prevent CloudWatch failures from stopping the entire script
+      (
+  
+      # Wait for dpkg lock to be released (up to 2 minutes)
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Waiting for dpkg lock to be released..."
+      timeout=120
+      while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
+          if [ $timeout -le 0 ]; then
+              echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: dpkg lock timeout, proceeding anyway"
+              break
+          fi
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] dpkg is locked, waiting... ($timeout seconds remaining)"
+          sleep 5
+          timeout=$((timeout - 5))
+      done
+  
+      # Download and install CloudWatch agent
+      wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
+      dpkg -i -E ./amazon-cloudwatch-agent.deb
+      rm amazon-cloudwatch-agent.deb
+  
+      # Configure CloudWatch agent
+      cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'EOF'
+  {
+    "agent": {
+      "run_as_user": "cwagent"
+    },
+    "logs": {
+      "logs_collected": {
+        "files": {
+          "collect_list": [
+            {
+              "file_path": "/var/log/runner-setup.log",
+              "log_group_name": "",
+              "log_stream_name": "{instance_id}/runner-setup",
+              "timezone": "UTC"
+            },
+            {
+              "file_path": "/tmp/job-started-hook.log",
+              "log_group_name": "",
+              "log_stream_name": "{instance_id}/job-started",
+              "timezone": "UTC"
+            },
+            {
+              "file_path": "/tmp/job-completed-hook.log",
+              "log_group_name": "",
+              "log_stream_name": "{instance_id}/job-completed",
+              "timezone": "UTC"
+            },
+            {
+              "file_path": "/tmp/termination-check.log",
+              "log_group_name": "",
+              "log_stream_name": "{instance_id}/termination",
+              "timezone": "UTC"
+            },
+            {
+              "file_path": "/home/test-user/_diag/Runner_**.log",
+              "log_group_name": "",
+              "log_stream_name": "{instance_id}/runner-diag",
+              "timezone": "UTC"
+            },
+            {
+              "file_path": "/home/test-user/_diag/Worker_**.log",
+              "log_group_name": "",
+              "log_stream_name": "{instance_id}/worker-diag",
+              "timezone": "UTC"
+            }
+          ]
+        }
+      }
+    }
+  }
+  EOF
+  
+      # Start CloudWatch agent
+      /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+          -a fetch-config \
+          -m ec2 \
+          -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json \
+          -s
+  
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] CloudWatch agent started"
+      ) || echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: CloudWatch agent installation failed, continuing without it"
+  fi
   
   # Configure SSH access if public key provided
   if [ -n "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host" ]; then
@@ -35,6 +122,8 @@
       echo "[$(date '+%Y-%m-%d %H:%M:%S')] SSH key added for user $DEFAULT_USER"
   fi
   
+  # Redirect runner setup logs to a file for CloudWatch
+  exec >> /var/log/runner-setup.log 2>&1
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] GitHub runner setup starting"
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] Working directory: /home/test-user"
   cd "/home/test-user"
@@ -162,6 +251,11 @@
           fi
       fi
   
+      # Flush CloudWatch logs before shutdown
+      echo "[$(date)] Flushing CloudWatch logs"
+      sync
+      sleep 5
+  
       sudo shutdown -h now "Runner terminating after idle timeout"
   else
       echo "[$(date)] Activity detected within ${CURRENT_GRACE_PERIOD} seconds, not terminating"
@@ -250,6 +344,15 @@
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting runner"
   # Create marker file for cleanup service
   touch /var/run/github-runner-started
+  # Ensure CloudWatch agent can read diagnostic logs
+  # The cwagent user needs to traverse into /home/test-user to reach _diag
+  # Make /home/test-user world-executable (but not readable) so cwagent can traverse it
+  chmod o+x /home/test-user
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Made /home/test-user traversable for CloudWatch agent"
+  # Create _diag directory if it doesn't exist
+  mkdir -p /home/test-user/_diag
+  # The _diag files are already world-readable by default, just ensure the directory is too
+  chmod 755 /home/test-user/_diag
   ./run.sh
   
   '''
@@ -430,7 +533,7 @@
   echo "[$(date)] Checking termination conditions"
   
   ACTIVITY_FILE="/var/run/github-runner-last-activity"
-  GRACE_PERIOD="${RUNNER_GRACE_PERIOD:-120}"
+  GRACE_PERIOD="${RUNNER_GRACE_PERIOD:-60}"
   INITIAL_GRACE_PERIOD="${RUNNER_INITIAL_GRACE_PERIOD:-180}"
   JOB_TRACK_DIR="/var/run/github-runner-jobs"
   
@@ -523,7 +626,9 @@
   echo "ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/job-started-hook.sh" > .env
   echo "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/job-completed-hook.sh" >> .env
   echo "RUNNER_HOME=/home/test-user" >> .env
-  echo "RUNNER_GRACE_PERIOD=30" >> .env
+  echo "RUNNER_GRACE_PERIOD=60" >> .env
+  echo "RUNNER_INITIAL_GRACE_PERIOD=180" >> .env
+  echo "RUNNER_POLL_INTERVAL=10" >> .env
   
   # Set up job tracking directory
   mkdir -p /var/run/github-runner-jobs
@@ -542,14 +647,14 @@
   ExecStart=/usr/local/bin/check-runner-termination.sh
   EOF
   
-  cat > /etc/systemd/system/runner-termination-check.timer << 'EOF'
+  cat > /etc/systemd/system/runner-termination-check.timer << EOF
   [Unit]
   Description=Periodic GitHub runner termination check
   Requires=runner-termination-check.service
   
   [Timer]
   OnBootSec=60s
-  OnUnitActiveSec=30s
+  OnUnitActiveSec=10s
   
   [Install]
   WantedBy=timers.target

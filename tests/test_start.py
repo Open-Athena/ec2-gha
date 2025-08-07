@@ -26,6 +26,7 @@ def aws():
 def test_build_user_data(aws, snapshot):
     """Test that template parameters are correctly substituted using snapshot testing"""
     params = {
+        "cloudwatch_logs_group": "",  # Empty = disabled
         "github_run_id": "123456789",
         "github_run_number": "42",
         "github_workflow": "test-workflow",
@@ -53,6 +54,37 @@ def test_build_user_data(aws, snapshot):
     assert user_data == snapshot
 
 
+def test_build_user_data_with_cloudwatch(aws, snapshot):
+    """Test user data with CloudWatch Logs enabled using snapshot testing"""
+    params = {
+        "cloudwatch_logs_group": "/aws/ec2/github-runners",
+        "github_run_id": "123456789",
+        "github_run_number": "42",
+        "github_workflow": "test-workflow",
+        "homedir": "/home/test-user",
+        "labels": "test-label",
+        "max_instance_lifetime": "360",
+        "repo": "test-org/test-repo",
+        "runner_grace_period": "60",
+        "runner_initial_grace_period": "180",
+        "runner_poll_interval": "10",
+        "runner_release": "https://example.com/runner.tar.gz",
+        "script": "echo 'test script'",
+        "ssh_pubkey": "",
+        "token": "test-token-xyz",
+        "userdata": "",
+    }
+    user_data = aws._build_user_data(**params)
+
+    # Verify all substitutions happened (no template variables remain)
+    template_vars = [ f'${k}' for k in params ]
+    for var in template_vars:
+        assert var not in user_data, f"Template variable {var} was not substituted"
+
+    # Use snapshot to verify the entire output
+    assert user_data == snapshot
+
+
 def test_build_user_data_missing_params(aws):
     """Test that missing required parameters raise an exception"""
     params = {
@@ -60,6 +92,7 @@ def test_build_user_data_missing_params(aws):
         "repo": "omsf-eco-infra/awsinfratesting",
         "script": "echo 'Hello, World!'",
         "token": "test",
+        "cloudwatch_logs_group": "",
         # Missing: labels, runner_release
     }
     with pytest.raises(Exception):
@@ -97,6 +130,7 @@ def complete_params():
 })
 def test_build_aws_params(complete_params):
     user_data_params = {
+        "cloudwatch_logs_group": "",
         "github_run_id": "16725250800",
         "github_run_number": "1",
         "github_workflow": "CI",
