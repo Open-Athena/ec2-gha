@@ -17,55 +17,55 @@ class StartAWS(CreateCloudInstance):
 
     Parameters
     ----------
+    home_dir : str
+        The home directory of the user.
     image_id : str
         The ID of the AMI to use.
     instance_type : str
         The type of instance to use.
-    home_dir : str
-        The home directory of the user.
-    repo : str
-        The repository to use.
     region_name : str
         The name of the region to use.
-    tags : list[dict[str, str]]
-        A list of tags to apply to the instance. Defaults to an empty list.
+    repo : str
+        The repository to use.
     gh_runner_tokens : list[str]
         A list of GitHub runner tokens. Defaults to an empty list.
-    root_device_size : int
-        The size of the root device. Defaults to 0 which uses the default.
-    labels : str
-        A comma-separated list of labels to apply to the runner. Defaults to an empty string.
-    subnet_id : str
-        The ID of the subnet to use. Defaults to an empty string.
-    security_group_id : str
-        The ID of the security group to use. Defaults to an empty string.
-    iam_role : str
+    iam_instance_profile : str
         The name of the IAM role to use. Defaults to an empty string.
-    script : str
-        The script to run on the instance. Defaults to an empty string.
-    userdata : str
-        Custom user data script to prepend to the runner setup. Defaults to an empty string.
     key_name : str
         The name of the EC2 key pair to use for SSH access. Defaults to an empty string.
+    labels : str
+        A comma-separated list of labels to apply to the runner. Defaults to an empty string.
+    root_device_size : int
+        The size of the root device. Defaults to 0 which uses the default.
+    script : str
+        The script to run on the instance. Defaults to an empty string.
+    security_group_id : str
+        The ID of the security group to use. Defaults to an empty string.
+    subnet_id : str
+        The ID of the subnet to use. Defaults to an empty string.
+    tags : list[dict[str, str]]
+        A list of tags to apply to the instance. Defaults to an empty list.
+    userdata : str
+        Custom user data script to prepend to the runner setup. Defaults to an empty string.
 
     """
 
+    home_dir: str
     image_id: str
     instance_type: str
-    home_dir: str
-    repo: str
     region_name: str
-    runner_release: str = ""
-    tags: list[dict[str, str]] = field(default_factory=list)
+    repo: str
     gh_runner_tokens: list[str] = field(default_factory=list)
-    root_device_size: int = 0
-    labels: str = ""
-    subnet_id: str = ""
-    security_group_id: str = ""
-    iam_role: str = ""
-    script: str = ""
-    userdata: str = ""
+    iam_instance_profile: str = ""
     key_name: str = ""
+    labels: str = ""
+    root_device_size: int = 0
+    runner_release: str = ""
+    script: str = ""
+    security_group_id: str = ""
+    subnet_id: str = ""
+    tags: list[dict[str, str]] = field(default_factory=list)
+    userdata: str = ""
 
     def _build_aws_params(self, user_data_params: dict) -> dict:
         """Build the parameters for the AWS API call.
@@ -93,8 +93,8 @@ class StartAWS(CreateCloudInstance):
             params["SubnetId"] = self.subnet_id
         if self.security_group_id and self.security_group_id.strip():
             params["SecurityGroupIds"] = [self.security_group_id.strip()]
-        if self.iam_role != "":
-            params["IamInstanceProfile"] = {"Name": self.iam_role}
+        if self.iam_instance_profile != "":
+            params["IamInstanceProfile"] = {"Name": self.iam_instance_profile}
         if self.key_name != "":
             params["KeyName"] = self.key_name
         if len(self.tags) > 0:

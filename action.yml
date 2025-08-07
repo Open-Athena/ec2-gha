@@ -1,29 +1,11 @@
 name: ec2-gha
-description: A simple GitHub Action for creating a self-hosted runner on AWS.
+description: GitHub Action for creating a self-hosted runner on AWS.
 runs:
   using: "docker"
   image: "Dockerfile"
 inputs:
-  aws_home_dir:
-    description: "The AWS AMI home directory to use for your runner. Will not start if not specified. For example: `/home/ec2-user`"
-    required: true
-  aws_iam_role:
-    description: "The optional AWS IAM role to assume for provisioning your runner."
-    required: false
-  aws_image_id:
-    description: "The machine AMI to use for your runner. This AMI can be a default but should have docker installed in the AMI. Will not start if not specified."
-    required: true
-  aws_instance_type:
-    description: "The type of instance to use for your runner. For example: t2.micro, t4g.nano, etc. Will not start if not specified."
-    required: true
-  aws_region_name:
+  aws_region:
     description: "The AWS region name to use for your runner. Defaults to AWS_REGION."
-    required: false
-  aws_root_device_size:
-    description: "The root device size in GB to use for your runner. Optional, defaults to the AMI default root disk size."
-    required: false
-  aws_security_group_id:
-    description: "The AWS security group ID to use for your runner. Will use the account default security group if not specified."
     required: false
   aws_subnet_id:
     description: "The AWS subnet ID to use for your runner. Will use the account default subnet if not specified."
@@ -31,25 +13,43 @@ inputs:
   aws_tags:
     description: "The AWS tags to use for your runner, formatted as a JSON list. See `README` for more details."
     required: false
+  ec2_home_dir:
+    description: "The EC2 AMI home directory to use for your runner. Will not start if not specified. For example: `/home/ec2-user`"
+    required: true
+  ec2_image_id:
+    description: "The machine AMI to use for your runner. This AMI can be a default but should have docker installed in the AMI. Will not start if not specified."
+    required: true
+  ec2_instance_profile:
+    description: "Instance profile name to attach to launched EC2 instances"
+    required: false
+  ec2_instance_type:
+    description: "The type of instance to use for your runner. For example: t2.micro, t4g.nano, etc. Will not start if not specified."
+    required: true
+  ec2_key_name:
+    description: "Name of the EC2 key pair to use for SSH access"
+    required: false
+  ec2_root_device_size:
+    description: "The root device size in GB to use for your runner. Optional, defaults to the AMI default root disk size."
+    required: false
+  ec2_security_group_id:
+    description: "The AWS security group ID to use for your runner. Will use the account default security group if not specified."
+    required: false
+  ec2_userdata:
+    description: "User data script to run on instance startup. Use this to configure the instance before the runner starts."
+    required: false
   extra_gh_labels:
     description: "Any extra GitHub labels to tag your runners with. Passed as a comma-separated list with no spaces."
     required: false
+  gh_timeout:
+    description: "The timeout in seconds to wait for the runner to come online as seen by the GitHub API. Defaults to 1200 seconds."
+    required: true
+    default: "1200"
   instance_count:
     description: "The number of instances to create, defaults to 1"
     required: true
     default: "1"
   repo:
     description: "The repo to run against. Will use the current repo if not specified."
-    required: false
-  gh_timeout:
-    description: "The timeout in seconds to wait for the runner to come online as seen by the GitHub API. Defaults to 1200 seconds."
-    required: true
-    default: "1200"
-  aws_userdata:
-    description: "User data script to run on instance startup. Use this to configure the instance before the runner starts."
-    required: false
-  aws_key_name:
-    description: "Name of the EC2 key pair to use for SSH access"
     required: false
 outputs:
   mapping:

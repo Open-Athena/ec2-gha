@@ -4,27 +4,27 @@
   #!/bin/bash
   set -e
   
-  echo 'custom userdata'
+  
   
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] GitHub runner setup starting"
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Working directory: /home/test-user"
-  cd "/home/test-user"
-  echo "echo 'test script'" > pre-runner-script.sh
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Working directory: /home/ec2-user"
+  cd "/home/ec2-user"
+  echo "echo 'Hello, World!'" > pre-runner-script.sh
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running pre-runner script"
   source pre-runner-script.sh
   export RUNNER_ALLOW_RUNASROOT=1
   # We will get the latest release from the GitHub API
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Downloading runner from: https://example.com/runner.tar.gz"
-  curl -L https://example.com/runner.tar.gz -o runner.tar.gz
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Downloading runner from: test.tar.gz"
+  curl -L test.tar.gz -o runner.tar.gz
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] Extracting runner"
   tar xzf runner.tar.gz
   # Fix home directory ownership after extraction; otherwise it will end up as 1001:docker, and SSH'ing in (to debug) won't work.
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] Fixing home directory ownership after runner extraction"
   if [ -n "$USER" ] && [ "$USER" != "root" ]; then
-      chown $USER:$USER /home/test-user
+      chown $USER:$USER /home/ec2-user
   fi
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Configuring runner for repo: test-org/test-repo with labels: test-label"
-  ./config.sh --url https://github.com/test-org/test-repo --token test-token-xyz --labels test-label --ephemeral
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Configuring runner for repo: omsf-eco-infra/awsinfratesting with labels: label"
+  ./config.sh --url https://github.com/omsf-eco-infra/awsinfratesting --token test --labels label --ephemeral
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting runner"
   # Create marker file for cleanup service
   touch /var/run/github-runner-started
