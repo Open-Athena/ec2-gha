@@ -30,6 +30,7 @@ def test_build_user_data(aws):
     lines in the output, which is more meaningful than substring matching.
     """
     params = {
+        "cloudwatch_logs_group": "",  # Empty = disabled
         "github_run_id": "123456789",
         "github_run_number": "42",
         "github_workflow": "test-workflow",
@@ -79,6 +80,42 @@ def test_build_user_data(aws):
     assert "touch /var/run/github-runner-last-activity" in lines
     assert "./run.sh" in lines
 
+    # Check CloudWatch block exists but won't execute when empty
+    assert 'if [ "" != "" ]; then' in user_data  # Empty string test will be false
+    assert "Installing CloudWatch agent" in user_data  # Block exists in script
+    # The agent won't actually be installed because the if condition is false
+
+
+def test_build_user_data_with_cloudwatch(aws):
+    """Test user data with CloudWatch Logs enabled"""
+    params = {
+        "cloudwatch_logs_group": "/aws/ec2/github-runners",
+        "github_run_id": "123456789",
+        "github_run_number": "42",
+        "github_workflow": "test-workflow",
+        "homedir": "/home/test-user",
+        "labels": "test-label",
+        "max_instance_lifetime": "360",
+        "repo": "test-org/test-repo",
+        "runner_grace_period": "30",
+        "runner_initial_grace_period": "120",
+        "runner_release": "https://example.com/runner.tar.gz",
+        "script": "echo 'test script'",
+        "ssh_pubkey": "",
+        "token": "test-token-xyz",
+        "userdata": "",
+    }
+    user_data = aws._build_user_data(**params)
+
+    # Check CloudWatch agent installation
+    assert "Installing CloudWatch agent" in user_data
+    assert "amazon-cloudwatch-agent.deb" in user_data
+    assert "/aws/ec2/github-runners" in user_data
+    assert "log_group_name" in user_data
+    assert "job-started-hook.log" in user_data
+    assert "job-completed-hook.log" in user_data
+    assert "termination-check.log" in user_data
+
 
 def test_build_user_data_missing_params(aws):
     """Test that missing required parameters raise an exception"""
@@ -87,6 +124,7 @@ def test_build_user_data_missing_params(aws):
         "repo": "omsf-eco-infra/awsinfratesting",
         "script": "echo 'Hello, World!'",
         "token": "test",
+        "cloudwatch_logs_group": "",
         # Missing: labels, runner_release
     }
     with pytest.raises(Exception):
@@ -124,6 +162,7 @@ def complete_params():
 })
 def test_build_aws_params(complete_params):
     user_data_params = {
+        "cloudwatch_logs_group": "",
         "github_run_id": "16725250800",
         "github_run_number": "1",
         "github_workflow": "CI",

@@ -28,6 +28,8 @@ class StartAWS(CreateCloudInstance):
         The name of the region to use.
     repo : str
         The repository to use.
+    cloudwatch_logs_group : str
+        CloudWatch Logs group name for streaming runner logs. Defaults to an empty string.
     gh_runner_tokens : list[str]
         A list of GitHub runner tokens. Defaults to an empty list.
     iam_instance_profile : str
@@ -64,6 +66,7 @@ class StartAWS(CreateCloudInstance):
     instance_type: str
     region_name: str
     repo: str
+    cloudwatch_logs_group: str = ""
     gh_runner_tokens: list[str] = field(default_factory=list)
     iam_instance_profile: str = ""
     key_name: str = ""
@@ -263,6 +266,7 @@ class StartAWS(CreateCloudInstance):
             labels = f"{self.labels},{label}" if self.labels else label
 
             user_data_params = {
+                "cloudwatch_logs_group": self.cloudwatch_logs_group,
                 "github_workflow": environ.get("GITHUB_WORKFLOW", ""),
                 "github_run_id": environ.get("GITHUB_RUN_ID", ""),
                 "github_run_number": environ.get("GITHUB_RUN_NUMBER", ""),
