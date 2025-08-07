@@ -1,0 +1,20 @@
+name: Demo – minimal EC2 GPU runner
+on:
+  workflow_dispatch:
+  workflow_call:   # Tested by `demos.yml`
+permissions:
+  id-token: write  # Required for AWS OIDC authentication
+  contents: read   # Required for actions/checkout
+jobs:
+  ec2:
+    # To use from another repo: Open-Athena/ec2-gha/.github/workflows/runner.yml
+    uses: ./.github/workflows/runner.yml
+    secrets: inherit
+    with:
+      ec2_instance_type: g4dn.xlarge
+      ec2_image_id: ami-00096836009b16a22  # Deep Learning OSS Nvidia Driver AMI GPU PyTorch
+  gpu-test:
+    needs: ec2
+    runs-on: ${{ needs.ec2.outputs.id }}
+    steps:
+    - run: nvidia-smi  # Verify GPU is available

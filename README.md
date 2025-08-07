@@ -4,6 +4,7 @@ Run GitHub Actions on ephemeral EC2 instances.
 **TOC**
 <!-- toc -->
 - [Quick Start](#quick-start)
+- [Demos](#demos)
 - [Inputs](#inputs)
     - [Required](#required)
         - [`secrets.GH_SA_TOKEN`](#gh-sa-token)
@@ -12,8 +13,9 @@ Run GitHub Actions on ephemeral EC2 instances.
 - [Outputs](#outputs)
 - [Technical Details](#technical)
     - [Runner Lifecycle](#lifecycle)
-    - [Multi-Job Workflows](#multi-job)
-    - [How Termination Works](#termination)
+    - [Parallel Jobs (Multiple Instances)](#parallel)
+    - [Multi-Job Workflows (Sequential)](#multi-job)
+    - [Termination logic](#termination)
     - [CloudWatch Logs Integration](#cloudwatch)
     - [Debugging and Troubleshooting](#debugging)
         - [SSH Access](#ssh)
@@ -44,12 +46,37 @@ jobs:
     # - `secrets.GH_SA_TOKEN` (GitHub token with repo admin access)
     # - `vars.EC2_LAUNCH_ROLE` (role with GitHub OIDC access to this repo)
     secrets: inherit
+    with:
+      ec2_instance_type: g4dn.xlarge
+      ec2_image_id: ami-00096836009b16a22  # Deep Learning OSS Nvidia Driver AMI GPU PyTorch
   gpu-test:
     needs: ec2
-    runs-on: ${{ needs.ec2.outputs.instance }}
+    runs-on: ${{ needs.ec2.outputs.id }}
     steps:
       - run: nvidia-smi  # GPU node!
 ```
+
+## Demos <a id="demos"></a>
+
+Example workflows demonstrating ec2-gha capabilities are in [`.github/workflows/`](.github/workflows/):
+
+[![](img/demos%2325%201.png)][demos#25]
+
+### GPU Workflows
+- [`demo-gpu-minimal.yml`](.github/workflows/demo-gpu-minimal.yml) - Minimal GPU test with `nvidia-smi`
+- [`demo-gpu-job-seq.yml`](.github/workflows/demo-gpu-job-seq.yml) - Sequential ML workflow (prepare→train→evaluate) using pre-installed PyTorch from DLAMI
+- Real-world example: [Mamba installation testing](https://github.com/Open-Athena/mamba/blob/gha/.github/workflows/install.yaml) - Shows `instance_name` customization for version-specific testing
+
+### Architecture & Parallelization
+- [`demo-archs.yml`](.github/workflows/demo-archs.yml) - Cross-architecture testing (x86 and ARM)
+- [`demo-multi-instance.yml`](.github/workflows/demo-multi-instance.yml) - Parallel jobs on multiple instances
+- [`demo-multi-job.yml`](.github/workflows/demo-multi-job.yml) - Different job types on separate instances
+- [`demo-matrix-wide.yml`](.github/workflows/demo-matrix-wide.yml) - Wide matrix strategy across many instances
+
+### Test Suite
+- [`demos.yml`](.github/workflows/demos.yml) - Runs all demos for regression testing
+
+See [`.github/workflows/README.md`](.github/workflows/README.md) for detailed descriptions of each demo.
 
 ## Inputs <a id="inputs"></a>
 
@@ -177,6 +204,7 @@ jobs:
     steps:
       - run: echo "Evaluating results"
 ```
+(see also [demo-job-seq], [demo-archs], [demo-matrix-wide])
 
 ### Termination logic <a id="termination"></a>
 
@@ -571,7 +599,9 @@ This repo borrows from or reuses:
 - [related-sciences/gce-github-runner] (self-terminating GCE runner, using [job hooks][hooks])
 
 [`runner.yml`]: .github/workflows/runner.yml
-[demo-multi-job.yml]: .github/workflows/demo-multi-job.yml
+[demo-job-seq]: .github/workflows/demo-job-seq.yml
+[demo-archs]: .github/workflows/demo-archs.yml
+[demo-matrix-wide]: .github/workflows/demo-matrix-wide.yml
 [aws-actions/configure-aws-credentials]: https://github.com/aws-actions/configure-aws-credentials
 [hooks]: https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/run-scripts
 [omsf/start-aws-gha-runner]: https://github.com/omsf/start-aws-gha-runner
@@ -579,5 +609,5 @@ This repo borrows from or reuses:
 [reusable workflow]: https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows#calling-a-reusable-workflow
 [file an issue]: https://github.com/Open-Athena/ec2-gha/issues/new/choose
 [SSH access]: #ssh
-[demos#25]: https://github.com/Open-Athena/ec2-gha/actions/runs/17004697889
 [cw]: #cloudwatch
+[demos#25]: https://github.com/Open-Athena/ec2-gha/actions/runs/17004697889
