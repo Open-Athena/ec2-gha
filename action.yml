@@ -13,6 +13,9 @@ inputs:
   aws_tags:
     description: "The AWS tags to use for your runner, formatted as a JSON list. See `README` for more details."
     required: false
+  cloudwatch_logs_group:
+    description: "CloudWatch Logs group name for streaming runner logs. Leave empty to disable CloudWatch Logs."
+    required: false
   ec2_home_dir:
     description: "The EC2 AMI home directory to use for your runner. Will not start if not specified. For example: `/home/ec2-user`"
     required: true
@@ -20,7 +23,7 @@ inputs:
     description: "The machine AMI to use for your runner. This AMI can be a default but should have docker installed in the AMI. Will not start if not specified."
     required: true
   ec2_instance_profile:
-    description: "Instance profile name to attach to launched EC2 instances"
+    description: "Instance profile name to attach to launched EC2 instances (e.g. for CloudWatch Logs)"
     required: false
   ec2_instance_type:
     description: "The type of instance to use for your runner. For example: t2.micro, t4g.nano, etc. Will not start if not specified."

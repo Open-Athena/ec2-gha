@@ -11,6 +11,7 @@ Run GitHub Actions on ephemeral EC2 instances.
     - [Runner Lifecycle](#lifecycle)
     - [Multi-Job Workflows](#multi-job)
     - [How Termination Works](#termination)
+    - [CloudWatch Logs Integration](#cloudwatch)
     - [Debugging and Troubleshooting](#debugging)
         - [SSH Access](#ssh)
         - [Important Log Files](#logs)
@@ -53,6 +54,10 @@ jobs:
 3. Configure an AWS IAM role with GitHub OIDC trust policy (see [below](#ec2-launch-role))
 4. Add the role ARN as a repository variable named `EC2_LAUNCH_ROLE`
 
+**Optional Setup:**
+- `EC2_INSTANCE_PROFILE`: Only needed if you want CloudWatch Logs or need the EC2 instances to access AWS APIs
+- See [CloudWatch Logs Integration](#cloudwatch) for details
+
 The `EC2_LAUNCH_ROLE` is passed to [aws-actions/configure-aws-credentials]; if you'd like to authenticate with AWS using other parameters, please [file an issue] to let us know.
 
 ### Configuring `EC2_LAUNCH_ROLE` <a id="ec2-launch-role"></a>
@@ -74,9 +79,10 @@ The reusable workflow ([`runner.yml`]) requires:
 
 Optional inputs (all fall back to corresponding `vars.*` if not provided):
 - `action_ref` - ec2-gha Git ref to checkout (branch/tag/SHA); auto-detected if not specified
+- `cloudwatch_logs_group` - CloudWatch Logs group name for streaming logs (falls back to `vars.CLOUDWATCH_LOGS_GROUP`)
 - `ec2_home_dir` - Home directory (default: `/home/ubuntu`)
 - `ec2_image_id` - AMI ID (default: Deep Learning AMI)
-- `ec2_instance_profile` - IAM instance profile name for EC2 instances (useful for on-instance debugging [via SSH](#ssh))
+- `ec2_instance_profile` - IAM instance profile name for EC2 instances (useful for on-instance debugging [via SSH](#ssh), required for [CloudWatch logging](#cloudwatch))
 - `ec2_instance_type` - Instance type (default: `g4dn.xlarge`)
 - `ec2_key_name` - EC2 key pair name (required for [SSH access](#ssh))
 - `ec2_root_device_size` - Root device size in GB (default: 0 = use AMI default)
@@ -144,6 +150,45 @@ jobs:
 5. New jobs starting within the grace period cancel the termination
 6. Before shutdown, the runner process is gracefully stopped to remove itself from GitHub
 
+### CloudWatch Logs Integration <a id="cloudwatch"></a>
+
+CloudWatch Logs integration is optional. To stream runner logs to CloudWatch Logs:
+
+1. **Create a CloudWatch Logs group**:
+   ```bash
+   aws logs create-log-group --log-group-name /aws/ec2/github-runners
+   ```
+
+2. **Create an IAM role for your EC2 instances** with CloudWatch Logs permissions:
+
+   **Important**: This is a separate role from your GitHub Actions launch role (`EC2_LAUNCH_ROLE`). The EC2 instances need their own IAM role to write logs. This role is only required if you want to use CloudWatch Logs.
+
+   See [Appendix: IAM Role Setup](#iam-setup-appendix) for detailed instructions on creating the `EC2_INSTANCE_PROFILE`.
+
+3. **Configure the workflow** with the IAM role:
+   ```yaml
+   jobs:
+     ec2:
+       uses: Open-Athena/ec2-gha/.github/workflows/runner.yml@main
+       with:
+         cloudwatch_logs_group: /aws/ec2/github-runners
+         ec2_instance_profile: GitHubRunnerEC2Profile  # The instance profile from step 2
+       secrets: inherit
+   ```
+
+   Or set as a repository variable:
+   ```bash
+   gh variable set EC2_INSTANCE_PROFILE --body "GitHubRunnerEC2Profile"
+   ```
+
+The following logs will be streamed to CloudWatch:
+- `/var/log/runner-setup.log` - Runner installation and setup
+- `/tmp/job-started-hook.log` - Job start events with workflow/job details
+- `/tmp/job-completed-hook.log` - Job completion events with remaining job count
+- `/tmp/termination-check.log` - Instance termination checks every 30 seconds
+- `~/actions-runner/_diag/Runner_*.log` - GitHub runner diagnostic logs
+- `~/actions-runner/_diag/Worker_*.log` - GitHub runner worker process logs
+
 ### Debugging and Troubleshooting <a id="debugging"></a>
 
 #### SSH Access <a id="ssh"></a>
@@ -157,11 +202,12 @@ To enable SSH debugging, provide:
 Once connected to the instance:
 - `/var/log/runner-setup.log` - Runner installation and registration
 - `/var/log/cloud-init-output.log` - Complete userdata execution
-- `/tmp/job-started-hook.log` - Job start tracking
-- `/tmp/job-completed-hook.log` - Job completion tracking
+- `/tmp/job-started-hook.log` - Job start tracking with detailed metadata
+- `/tmp/job-completed-hook.log` - Job completion tracking with job counts
 - `/tmp/termination-check.log` - Termination check logs (runs every 30 seconds)
 - `/var/run/github-runner-jobs/*.job` - Individual job status files
-- `~/actions-runner/_diag/*.log` - GitHub runner diagnostic logs
+- `~/actions-runner/_diag/Runner_*.log` - GitHub runner process logs (job scheduling, API calls)
+- `~/actions-runner/_diag/Worker_*.log` - Job execution logs
 
 #### Common Issues <a id="issues"></a>
 
@@ -256,6 +302,55 @@ ec2_launch_policy = aws.iam.Policy("github-actions-ec2-launch-policy",
         ]
     }"""
 )
+
+# CloudWatch Logs policy for EC2 instances
+cloudwatch_logs_policy = aws.iam.Policy("ec2-instance-cloudwatch-policy",
+    policy="""{
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents",
+                    "logs:DescribeLogStreams"
+                ],
+                "Resource": "arn:aws:logs:*:*:*"
+            }
+        ]
+    }"""
+)
+
+# Create IAM role for EC2 instances (shared across all repos)
+ec2_instance_role = aws.iam.Role("github-runner-ec2-instance-role",
+    assume_role_policy="""{
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Principal": {
+                    "Service": "ec2.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+            }
+        ]
+    }"""
+)
+
+# Attach CloudWatch policy to instance role
+cloudwatch_policy_attachment = aws.iam.RolePolicyAttachment("ec2-instance-cloudwatch-attachment",
+    role=ec2_instance_role.name,
+    policy_arn=cloudwatch_logs_policy.arn
+)
+
+# Create instance profile
+ec2_instance_profile = aws.iam.InstanceProfile("github-runner-ec2-profile",
+    role=ec2_instance_role.name
+)
+
+# Export the instance profile name
+pulumi.export("ec2_instance_profile_name", ec2_instance_profile.name)
 
 # Configure which repos can use the launch role
 ORGS_REPOS = [
@@ -368,7 +463,56 @@ aws iam attach-role-policy \
   --role-name GitHubActionsEC2LaunchRole \
   --policy-arn arn:aws:iam::YOUR_ACCOUNT_ID:policy/GitHubActionsEC2LaunchPolicy
 
-# 5. Configure repository variables
+# 5. Create CloudWatch Logs policy for EC2 instances
+aws iam create-policy \
+  --policy-name GitHubRunnerCloudWatchPolicy \
+  --policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogStreams"
+        ],
+        "Resource": "arn:aws:logs:*:*:*"
+      }
+    ]
+  }'
+
+# 6. Create EC2 instance role
+aws iam create-role \
+  --role-name GitHubRunnerEC2InstanceRole \
+  --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Principal": {
+          "Service": "ec2.amazonaws.com"
+        },
+        "Action": "sts:AssumeRole"
+      }
+    ]
+  }'
+
+# 7. Attach CloudWatch policy to instance role
+aws iam attach-role-policy \
+  --role-name GitHubRunnerEC2InstanceRole \
+  --policy-arn arn:aws:iam::YOUR_ACCOUNT_ID:policy/GitHubRunnerCloudWatchPolicy
+
+# 8. Create instance profile
+aws iam create-instance-profile \
+  --instance-profile-name GitHubRunnerEC2Profile
+
+# 9. Add role to instance profile
+aws iam add-role-to-instance-profile \
+  --instance-profile-name GitHubRunnerEC2Profile \
+  --role-name GitHubRunnerEC2InstanceRole
+
+# 10. Configure repository variables
 gh variable set EC2_LAUNCH_ROLE --body "arn:aws:iam::YOUR_ACCOUNT_ID:role/GitHubActionsEC2LaunchRole"
 gh variable set EC2_INSTANCE_PROFILE --body "GitHubRunnerEC2Profile"
 ```
