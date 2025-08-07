@@ -9,6 +9,7 @@ name: EC2 Runner
 #   EC2_KEY_NAME - Default SSH key pair name
 #   EC2_SECURITY_GROUP_ID - Default security group ID
 #   MAX_INSTANCE_LIFETIME - Default maximum instance lifetime in minutes
+#   SSH_PUBKEY - Default SSH public key to add to instances
 #
 # Priority: inputs > vars > defaults
 
@@ -77,16 +78,20 @@ on:
         description: "Maximum instance lifetime in minutes before automatic shutdown (falls back to vars.MAX_INSTANCE_LIFETIME, then 360 = 6 hours)"
         required: false
         type: string
-      runner_initial_grace_period:
-        description: "Grace period in seconds before terminating instance if no jobs start (default 180)"
-        required: false
-        type: string
-        default: "180"
       runner_grace_period:
         description: "Grace period in seconds before terminating instance after last job completes (default 120)"
         required: false
         type: string
         default: "120"
+      runner_initial_grace_period:
+        description: "Grace period in seconds before terminating instance if no jobs start (default 180)"
+        required: false
+        type: string
+        default: "180"
+      ssh_pubkey:
+        description: "SSH public key to add to authorized_keys (falls back to vars.SSH_PUBKEY)"
+        required: false
+        type: string
     outputs:
       id:
         description: "Instance ID for runs-on"
@@ -147,5 +152,6 @@ jobs:
           max_instance_lifetime: ${{ inputs.max_instance_lifetime || vars.MAX_INSTANCE_LIFETIME || '360' }}
           runner_initial_grace_period: ${{ inputs.runner_initial_grace_period }}
           runner_grace_period: ${{ inputs.runner_grace_period }}
+          ssh_pubkey: ${{ inputs.ssh_pubkey || vars.SSH_PUBKEY }}
         env:
           GH_PAT: ${{ secrets.GH_SA_TOKEN }}

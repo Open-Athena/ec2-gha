@@ -48,6 +48,8 @@ class StartAWS(CreateCloudInstance):
         The script to run on the instance. Defaults to an empty string.
     security_group_id : str
         The ID of the security group to use. Defaults to an empty string.
+    ssh_pubkey : str
+        SSH public key to add to authorized_keys. Defaults to an empty string.
     subnet_id : str
         The ID of the subnet to use. Defaults to an empty string.
     tags : list[dict[str, str]]
@@ -73,6 +75,7 @@ class StartAWS(CreateCloudInstance):
     runner_release: str = ""
     script: str = ""
     security_group_id: str = ""
+    ssh_pubkey: str = ""
     subnet_id: str = ""
     tags: list[dict[str, str]] = field(default_factory=list)
     userdata: str = ""
@@ -271,6 +274,7 @@ class StartAWS(CreateCloudInstance):
                 "runner_initial_grace_period": self.runner_initial_grace_period,
                 "runner_release": self.runner_release,
                 "script": self.script,
+                "ssh_pubkey": self.ssh_pubkey,
                 "token": token,
                 "userdata": self.userdata,
             }

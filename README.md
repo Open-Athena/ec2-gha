@@ -84,6 +84,7 @@ Optional inputs (all fall back to corresponding `vars.*` if not provided):
 - `max_instance_lifetime` - Maximum instance lifetime in minutes before automatic shutdown (falls back to `vars.MAX_INSTANCE_LIFETIME`, default: 360 = 6 hours)
 - `runner_grace_period` - Grace period in seconds before terminating (default: 120)
 - `runner_initial_grace_period` - Grace period in seconds before terminating instance if no jobs start (default: 180)
+- `ssh_pubkey` - SSH public key for debugging access
 
 It also uses organization/repository variables as fallbacks for most inputs (e.g. `vars.{EC2_LAUNCH_ROLE,EC2_IMAGE_ID,…)`).
 
@@ -148,7 +149,9 @@ jobs:
 #### SSH Access <a id="ssh"></a>
 To enable SSH debugging, provide:
 - `ec2_security_group_id`: A security group allowing SSH (port 22)
-- `ec2_key_name`: An EC2 key pair name (for pre-existing AWS keys)
+- Either:
+  - `ec2_key_name`: An EC2 key pair name (for pre-existing AWS keys)
+  - `ssh_pubkey`: An SSH public key string (for ad-hoc access)
 
 #### Important Log Files <a id="logs"></a>
 Once connected to the instance:
