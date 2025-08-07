@@ -36,6 +36,8 @@ class StartAWS(CreateCloudInstance):
         The name of the EC2 key pair to use for SSH access. Defaults to an empty string.
     labels : str
         A comma-separated list of labels to apply to the runner. Defaults to an empty string.
+    max_instance_lifetime : str
+        Maximum instance lifetime in minutes before automatic shutdown. Defaults to "360" (6 hours).
     root_device_size : int
         The size of the root device. Defaults to 0 which uses the default.
     runner_initial_grace_period : str
@@ -64,6 +66,7 @@ class StartAWS(CreateCloudInstance):
     iam_instance_profile: str = ""
     key_name: str = ""
     labels: str = ""
+    max_instance_lifetime: str = "360"
     root_device_size: int = 0
     runner_grace_period: str = "120"
     runner_initial_grace_period: str = "180"
@@ -262,6 +265,7 @@ class StartAWS(CreateCloudInstance):
                 "github_run_number": environ.get("GITHUB_RUN_NUMBER", ""),
                 "homedir": self.home_dir,
                 "labels": labels,
+                "max_instance_lifetime": self.max_instance_lifetime,
                 "repo": self.repo,
                 "runner_grace_period": self.runner_grace_period,
                 "runner_initial_grace_period": self.runner_initial_grace_period,

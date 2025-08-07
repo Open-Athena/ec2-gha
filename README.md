@@ -81,6 +81,7 @@ Optional inputs (all fall back to corresponding `vars.*` if not provided):
 - `ec2_key_name` - EC2 key pair name (required for [SSH access](#ssh))
 - `ec2_root_device_size` - Root device size in GB (default: 0 = use AMI default)
 - `ec2_security_group_id` - Security group ID (required for [SSH access](#ssh), should expose inbound port 22)
+- `max_instance_lifetime` - Maximum instance lifetime in minutes before automatic shutdown (falls back to `vars.MAX_INSTANCE_LIFETIME`, default: 360 = 6 hours)
 - `runner_grace_period` - Grace period in seconds before terminating (default: 120)
 - `runner_initial_grace_period` - Grace period in seconds before terminating instance if no jobs start (default: 180)
 
@@ -182,6 +183,7 @@ Once connected to the instance:
 - Implements activity-based termination with systemd timer
 - Uses activity-based termination with systemd timer checks every 30 seconds
 - Terminates only after runner_grace_period seconds of inactivity (no race conditions)
+- Sets maximum instance lifetime (configurable via `max_instance_lifetime`, default: 6 hours)
 - Supports custom AMIs with pre-installed dependencies
 
 ### Default AWS Tags <a id="tags"></a>
