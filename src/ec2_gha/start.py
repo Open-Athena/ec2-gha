@@ -291,6 +291,7 @@ class StartAWS(CreateCloudInstance):
                 "runner_poll_interval": self.runner_poll_interval,
                 "runner_release": self.runner_release,
                 "script": self.script,
+                "ssh_pubkey": self.ssh_pubkey,
                 "token": token,
                 "userdata": self.userdata,
             }

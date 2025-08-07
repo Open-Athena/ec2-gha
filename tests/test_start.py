@@ -38,6 +38,7 @@ def test_build_user_data(aws, snapshot):
         "runner_poll_interval": "11",
         "runner_release": "https://example.com/runner.tar.gz",
         "script": "echo 'test script'",
+        "ssh_pubkey": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host",
         "token": "test-token-xyz",
         "userdata": "echo 'custom userdata'",
     }
@@ -108,6 +109,7 @@ def test_build_aws_params(complete_params):
         "runner_poll_interval": "11",
         "runner_release": "test.tar.gz",
         "script": "echo 'Hello, World!'",
+        "ssh_pubkey": "",
         "token": "test",
         "userdata": "",
     }

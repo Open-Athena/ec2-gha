@@ -11,6 +11,30 @@
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] Setting up maximum lifetime timeout: ${MAX_LIFETIME_MINUTES} minutes"
   nohup bash -c "sleep ${MAX_LIFETIME_MINUTES}m && echo '[$(date)] Maximum lifetime reached' && shutdown -h now" > /var/log/max-lifetime.log 2>&1 &
   
+  
+  # Configure SSH access if public key provided
+  if [ -n "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host" ]; then
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Configuring SSH access"
+  
+      # Determine the default user based on the home directory owner
+      DEFAULT_USER=$(stat -c "%U" "/home/test-user" 2>/dev/null || echo "root")
+  
+      # Create .ssh directory if it doesn't exist
+      mkdir -p "/home/test-user/.ssh"
+      chmod 700 "/home/test-user/.ssh"
+  
+      # Add the public key to authorized_keys
+      echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host" >> "/home/test-user/.ssh/authorized_keys"
+      chmod 600 "/home/test-user/.ssh/authorized_keys"
+  
+      # Set proper ownership
+      if [ "$DEFAULT_USER" != "root" ]; then
+          chown -R "$DEFAULT_USER:$DEFAULT_USER" "/home/test-user/.ssh"
+      fi
+  
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] SSH key added for user $DEFAULT_USER"
+  fi
+  
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] GitHub runner setup starting"
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] Working directory: /home/test-user"
   cd "/home/test-user"

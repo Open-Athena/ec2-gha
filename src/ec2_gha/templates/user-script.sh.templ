@@ -8,6 +8,30 @@ MAX_LIFETIME_MINUTES=$max_instance_lifetime
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Setting up maximum lifetime timeout: $${MAX_LIFETIME_MINUTES} minutes"
 nohup bash -c "sleep $${MAX_LIFETIME_MINUTES}m && echo '[$$(date)] Maximum lifetime reached' && shutdown -h now" > /var/log/max-lifetime.log 2>&1 &
 
+
+# Configure SSH access if public key provided
+if [ -n "$ssh_pubkey" ]; then
+    echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Configuring SSH access"
+
+    # Determine the default user based on the home directory owner
+    DEFAULT_USER=$$(stat -c "%U" "$homedir" 2>/dev/null || echo "root")
+
+    # Create .ssh directory if it doesn't exist
+    mkdir -p "$homedir/.ssh"
+    chmod 700 "$homedir/.ssh"
+
+    # Add the public key to authorized_keys
+    echo "$ssh_pubkey" >> "$homedir/.ssh/authorized_keys"
+    chmod 600 "$homedir/.ssh/authorized_keys"
+
+    # Set proper ownership
+    if [ "$$DEFAULT_USER" != "root" ]; then
+        chown -R "$$DEFAULT_USER:$$DEFAULT_USER" "$homedir/.ssh"
+    fi
+
+    echo "[$$(date '+%Y-%m-%d %H:%M:%S')] SSH key added for user $$DEFAULT_USER"
+fi
+
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] GitHub runner setup starting"
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Working directory: $homedir"
 cd "$homedir"
