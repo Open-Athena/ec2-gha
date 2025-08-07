@@ -31,6 +31,7 @@ def main():
         .update_state("INPUT_EC2_USERDATA", "userdata")
         .update_state("INPUT_EXTRA_GH_LABELS", "labels")
         .update_state("INPUT_INSTANCE_COUNT", "instance_count", type_hint=int)
+        .update_state("INPUT_MAX_INSTANCE_LIFETIME", "max_instance_lifetime")
         .update_state("INPUT_RUNNER_GRACE_PERIOD", "runner_grace_period")
         .update_state("INPUT_RUNNER_INITIAL_GRACE_PERIOD", "runner_initial_grace_period")
         .update_state("INPUT_RUNNER_POLL_INTERVAL", "runner_poll_interval")

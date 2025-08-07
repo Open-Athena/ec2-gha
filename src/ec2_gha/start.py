@@ -284,6 +284,7 @@ class StartAWS(CreateCloudInstance):
                 "github_run_number": environ.get("GITHUB_RUN_NUMBER", ""),
                 "homedir": self.home_dir,
                 "labels": labels,
+                "max_instance_lifetime": self.max_instance_lifetime,
                 "repo": self.repo,
                 "runner_grace_period": self.runner_grace_period,
                 "runner_initial_grace_period": self.runner_initial_grace_period,
