@@ -14,14 +14,205 @@ export RUNNER_ALLOW_RUNASROOT=1
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Downloading runner from: $runner_release"
 curl -L $runner_release -o runner.tar.gz
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Extracting runner"
-tar xzf runner.tar.gz
-# Fix home directory ownership after extraction; otherwise it will end up as 1001:docker, and SSH'ing in (to debug) won't work.
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Fixing home directory ownership after runner extraction"
-if [ -n "$$USER" ] && [ "$$USER" != "root" ]; then
-    chown $$USER:$$USER $homedir
+# `--no-overwrite-dir` is important, otherwise `$homedir` ends up `chown`'d to `1001:docker`, and `sshd` will refuse connection attempts to `$homedir`
+tar --no-overwrite-dir -xzf runner.tar.gz
+echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Setting up job tracking scripts"
+# Create minimal job tracking scripts inline
+cat > /usr/local/bin/job-started-hook.sh << 'EOFS'
+#!/bin/bash
+exec >> /tmp/job-started-hook.log 2>&1
+echo "[$$(date)] Job STARTED  : $${GITHUB_WORKFLOW}/$${GITHUB_JOB} (Run: $${GITHUB_RUN_ID}/$${GITHUB_RUN_NUMBER}, Attempt: $${GITHUB_RUN_ATTEMPT})"
+echo "  Repository: $${GITHUB_REPOSITORY}"
+echo "  Runner: $${RUNNER_NAME}"
+JOB_TRACK_DIR="/var/run/github-runner-jobs"
+mkdir -p "$${JOB_TRACK_DIR}"
+echo "{\"job_id\":\"$${GITHUB_JOB}\",\"run_id\":\"$${GITHUB_RUN_ID}\",\"workflow\":\"$${GITHUB_WORKFLOW}\",\"status\":\"running\"}" > "$${JOB_TRACK_DIR}/$${GITHUB_RUN_ID}-$${GITHUB_JOB}.job"
+# Update activity timestamp
+touch /var/run/github-runner-last-activity
+EOFS
+
+cat > /usr/local/bin/job-completed-hook.sh << 'EOFC'
+#!/bin/bash
+exec >> /tmp/job-completed-hook.log 2>&1
+echo "[$$(date)] Job COMPLETED: $${GITHUB_WORKFLOW}/$${GITHUB_JOB} (Run: $${GITHUB_RUN_ID}/$${GITHUB_RUN_NUMBER}, Attempt: $${GITHUB_RUN_ATTEMPT})"
+echo "  Repository: $${GITHUB_REPOSITORY}"
+echo "  Runner: $${RUNNER_NAME}"
+JOB_TRACK_DIR="/var/run/github-runner-jobs"
+if [ -f "$${JOB_TRACK_DIR}/$${GITHUB_RUN_ID}-$${GITHUB_JOB}.job" ]; then
+    sed -i 's/"status":"running"/"status":"completed"/' "$${JOB_TRACK_DIR}/$${GITHUB_RUN_ID}-$${GITHUB_JOB}.job"
 fi
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Configuring runner for repo: $repo with labels: $labels"
-./config.sh --url https://github.com/$repo --token $token --labels $labels --ephemeral
+# Count remaining running jobs
+RUNNING_JOBS=$$(grep -l '"status":"running"' "$${JOB_TRACK_DIR}"/*.job 2>/dev/null | wc -l || echo 0)
+echo "  Running jobs remaining: $${RUNNING_JOBS}"
+# Update activity timestamp
+touch /var/run/github-runner-last-activity
+EOFC
+
+cat > /usr/local/bin/check-runner-termination.sh << 'EOFT'
+#!/bin/bash
+exec >> /tmp/termination-check.log 2>&1
+echo "[$$(date)] Checking termination conditions"
+
+ACTIVITY_FILE="/var/run/github-runner-last-activity"
+GRACE_PERIOD="$${RUNNER_GRACE_PERIOD:-120}"
+INITIAL_GRACE_PERIOD="$${RUNNER_INITIAL_GRACE_PERIOD:-180}"
+JOB_TRACK_DIR="/var/run/github-runner-jobs"
+
+# Check if activity file exists
+if [ ! -f "$${ACTIVITY_FILE}" ]; then
+    echo "[$$(date)] WARNING: No activity file found, creating it now"
+    touch "$${ACTIVITY_FILE}"
+fi
+
+# Get last activity time and current time
+LAST_ACTIVITY=$$(stat -c %Y "$${ACTIVITY_FILE}" 2>/dev/null || echo 0)
+NOW=$$(date +%s)
+IDLE_TIME=$$((NOW - LAST_ACTIVITY))
+
+# Check if any jobs have ever run
+if ls "$${JOB_TRACK_DIR}"/*.job 2>/dev/null | grep -q .; then
+    JOBS_HAVE_RUN=true
+    CURRENT_GRACE_PERIOD="$${GRACE_PERIOD}"
+else
+    JOBS_HAVE_RUN=false
+    CURRENT_GRACE_PERIOD="$${INITIAL_GRACE_PERIOD}"
+fi
+
+echo "[$$(date)] Last activity: $$(date -d @$${LAST_ACTIVITY} '+%Y-%m-%d %H:%M:%S')"
+echo "[$$(date)] Current time: $$(date '+%Y-%m-%d %H:%M:%S')"
+echo "[$$(date)] Idle time: $${IDLE_TIME} seconds (grace period: $${CURRENT_GRACE_PERIOD} seconds)"
+echo "[$$(date)] Jobs have run: $${JOBS_HAVE_RUN}"
+
+# Check for running jobs first
+RUNNING_JOBS=$$(grep -l '"status":"running"' "$${JOB_TRACK_DIR}"/*.job 2>/dev/null | wc -l || echo 0)
+echo "[$$(date)] Running jobs: $${RUNNING_JOBS}"
+
+# Show status of each job for debugging
+echo "[$$(date)] Current job files:"
+for job_file in "$${JOB_TRACK_DIR}"/*.job; do
+    if [ -f "$${job_file}" ]; then
+        job_status=$$(grep -o '"status":"[^"]*"' "$${job_file}" || echo "unknown")
+        echo "[$$(date)]   $$(basename "$${job_file}"): $${job_status}"
+    fi
+done || echo "[$$(date)]   No job files found"
+
+# Never terminate if jobs are running
+if [ "$${RUNNING_JOBS}" -gt 0 ]; then
+    echo "[$$(date)] Jobs are still running, not checking idle time"
+elif [ "$${IDLE_TIME}" -gt "$${CURRENT_GRACE_PERIOD}" ]; then
+    echo "[$$(date)] No running jobs and no activity for $${IDLE_TIME} seconds, proceeding with termination"
+
+    # Try to remove runner from GitHub first
+    if [ -f "$homedir/config.sh" ]; then
+        echo "[$$(date)] Removing runner from GitHub"
+        cd "$homedir"
+        # Stop the runner service
+        RUNNER_PID=$$(pgrep -f "Runner.Listener" | head -1)
+        if [ -n "$${RUNNER_PID}" ]; then
+            echo "[$$(date)] Stopping runner PID $${RUNNER_PID}"
+            kill -INT "$${RUNNER_PID}" 2>/dev/null || true
+            # Wait for it to stop
+            for i in {1..10}; do
+                if ! kill -0 "$${RUNNER_PID}" 2>/dev/null; then
+                    echo "[$$(date)] Runner stopped"
+                    break
+                fi
+                sleep 1
+            done
+        fi
+
+        # Remove runner from GitHub
+        # We need RUNNER_ALLOW_RUNASROOT=1 to remove as root, just like when we configured it
+        if RUNNER_ALLOW_RUNASROOT=1 ./config.sh remove --token $token; then
+            echo "[$$(date)] Runner removed from GitHub successfully"
+        else
+            echo "[$$(date)] Failed to remove runner from GitHub"
+        fi
+    fi
+
+    sudo shutdown -h now "Runner terminating after idle timeout"
+else
+    echo "[$$(date)] Activity detected within $${CURRENT_GRACE_PERIOD} seconds, not terminating"
+fi
+EOFT
+
+chmod +x /usr/local/bin/job-started-hook.sh /usr/local/bin/job-completed-hook.sh /usr/local/bin/check-runner-termination.sh
+
+# Set up runner hooks
+echo "ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/job-started-hook.sh" > .env
+echo "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/job-completed-hook.sh" >> .env
+echo "RUNNER_HOME=$homedir" >> .env
+echo "RUNNER_GRACE_PERIOD=$runner_grace_period" >> .env
+
+# Set up job tracking directory
+mkdir -p /var/run/github-runner-jobs
+
+# Create initial activity timestamp
+touch /var/run/github-runner-last-activity
+
+# Set up periodic termination check using systemd
+cat > /etc/systemd/system/runner-termination-check.service << 'EOF'
+[Unit]
+Description=Check GitHub runner termination conditions
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/check-runner-termination.sh
+EOF
+
+cat > /etc/systemd/system/runner-termination-check.timer << 'EOF'
+[Unit]
+Description=Periodic GitHub runner termination check
+Requires=runner-termination-check.service
+
+[Timer]
+OnBootSec=60s
+OnUnitActiveSec=30s
+
+[Install]
+WantedBy=timers.target
+EOF
+
+# Enable and start the timer
+systemctl daemon-reload
+systemctl enable runner-termination-check.timer
+systemctl start runner-termination-check.timer
+
+# Get instance metadata for descriptive runner name
+INSTANCE_ID=$$(wget -q -O - http://169.254.169.254/latest/meta-data/instance-id || echo "unknown")
+INSTANCE_TYPE=$$(wget -q -O - http://169.254.169.254/latest/meta-data/instance-type || echo "unknown")
+
+# Create runner name with just the instance ID for uniqueness
+RUNNER_NAME="ec2-$${INSTANCE_ID}"
+
+# Build additional labels with metadata for easier correlation
+# These will be visible in the GitHub runner management UI
+METADATA_LABELS=""
+METADATA_LABELS="$${METADATA_LABELS},instance-id:$${INSTANCE_ID}"
+METADATA_LABELS="$${METADATA_LABELS},instance-type:$${INSTANCE_TYPE}"
+
+# Add GitHub workflow metadata passed from the action
+if [ -n "$github_workflow" ]; then
+    # Replace spaces and special chars in workflow name for label compatibility
+    WORKFLOW_LABEL=$$(echo "$github_workflow" | tr ' /' '-' | tr -cd '[:alnum:]-_')
+    METADATA_LABELS="$${METADATA_LABELS},workflow:$${WORKFLOW_LABEL}"
+fi
+if [ -n "$github_run_id" ]; then
+    METADATA_LABELS="$${METADATA_LABELS},run-id:$github_run_id"
+fi
+if [ -n "$github_run_number" ]; then
+    METADATA_LABELS="$${METADATA_LABELS},run-number:$github_run_number"
+fi
+
+# Combine provided labels (user + runner-xxx) with instance metadata labels
+# The $labels variable already contains user labels and the critical runner-xxx label from Python
+ALL_LABELS="$labels$${METADATA_LABELS}"
+
+echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Configuring runner for repo: $repo"
+echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Runner name: $${RUNNER_NAME}"
+echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Labels: $${ALL_LABELS}"
+./config.sh --url https://github.com/$repo --token $token --labels "$${ALL_LABELS}" --name "$${RUNNER_NAME}" --disableupdate
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Starting runner"
 # Create marker file for cleanup service
 touch /var/run/github-runner-started

@@ -10,8 +10,6 @@ def main():
     required = ["GH_PAT", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
     # Check that everything exists
     check_required(env, required)
-    # The timeout is infallible
-    timeout = int(os.environ["INPUT_GH_TIMEOUT"])
 
     token = os.environ["GH_PAT"]
     # Make a copy of environment variables for immutability
@@ -31,6 +29,8 @@ def main():
         .update_state("INPUT_EC2_USERDATA", "userdata")
         .update_state("INPUT_EXTRA_GH_LABELS", "labels")
         .update_state("INPUT_INSTANCE_COUNT", "instance_count", type_hint=int)
+        .update_state("INPUT_RUNNER_GRACE_PERIOD", "runner_grace_period")
+        .update_state("INPUT_RUNNER_INITIAL_GRACE_PERIOD", "runner_initial_grace_period")
         .update_state("AWS_REGION", "region_name")        # default
         .update_state("INPUT_AWS_REGION", "region_name")  # input override
         .update_state("GITHUB_REPOSITORY", "repo")        # default
@@ -53,7 +53,6 @@ def main():
         cloud_params=params,
         gh=gh,
         count=instance_count,
-        timeout=timeout,
     )
     # This will output the instance ids for using workflow syntax
     deployment.start_runner_instances()
