@@ -10,13 +10,13 @@ from botocore.exceptions import WaiterError, ClientError
 def aws():
     with mock_aws():
         params = {
+            "gh_runner_tokens": ["testing"],
+            "home_dir": "/home/ec2-user",
             "image_id": "ami-0772db4c976d21e9b",
             "instance_type": "t2.micro",
             "region_name": "us-east-1",
-            "gh_runner_tokens": ["testing"],
-            "home_dir": "/home/ec2-user",
-            "runner_release": "testing",
             "repo": "omsf-eco-infra/awsinfratesting",
+            "runner_release": "testing",
         }
         yield StartAWS(**params)
 
@@ -29,11 +29,11 @@ def test_build_user_data(aws):
     """
     params = {
         "homedir": "/home/ec2-user",
-        "script": "echo 'Hello, World!'",
-        "repo": "omsf-eco-infra/awsinfratesting",
-        "token": "test",
         "labels": "label",
+        "repo": "omsf-eco-infra/awsinfratesting",
         "runner_release": "test.tar.gz",
+        "script": "echo 'Hello, World!'",
+        "token": "test",
         "userdata": "",
     }
     # We strip this to ensure that we don't have any extra whitespace to fail our test
@@ -53,8 +53,8 @@ def test_build_user_data_missing_params(aws):
     """Test that missing required parameters raise an exception"""
     params = {
         "homedir": "/home/ec2-user",
-        "script": "echo 'Hello, World!'",
         "repo": "omsf-eco-infra/awsinfratesting",
+        "script": "echo 'Hello, World!'",
         "token": "test",
         # Missing: labels, runner_release
     }
@@ -64,32 +64,32 @@ def test_build_user_data_missing_params(aws):
 @pytest.fixture(scope="function")
 def complete_params():
     params = {
+        "gh_runner_tokens": ["testing"],
+        "home_dir": "/home/ec2-user",
+        "iam_instance_profile": "test",
         "image_id": "ami-0772db4c976d21e9b",
         "instance_type": "t2.micro",
+        "region_name": "us-east-1",
+        "repo": "omsf-eco-infra/awsinfratesting",
+        "root_device_size": 100,
+        "runner_release": "testing",
+        "security_group_id": "test",
+        "subnet_id": "test",
         "tags": [
             {"Key": "Name", "Value": "test"},
             {"Key": "Owner", "Value": "test"},
         ],
-        "region_name": "us-east-1",
-        "gh_runner_tokens": ["testing"],
-        "home_dir": "/home/ec2-user",
-        "runner_release": "testing",
-        "repo": "omsf-eco-infra/awsinfratesting",
-        "subnet_id": "test",
-        "security_group_id": "test",
-        "iam_role": "test",
-        "root_device_size": 100
     }
     yield params
 
 def test_build_aws_params(complete_params):
     user_data_params = {
-        "token": "test",
-        "repo": "omsf-eco-infra/awsinfratesting",
         "homedir": "/home/ec2-user",
-        "script": "echo 'Hello, World!'",
-        "runner_release": "test.tar.gz",
         "labels": "label",
+        "repo": "omsf-eco-infra/awsinfratesting",
+        "runner_release": "test.tar.gz",
+        "script": "echo 'Hello, World!'",
+        "token": "test",
         "userdata": "",
     }
     aws = StartAWS(**complete_params)
