@@ -156,8 +156,14 @@
       
       log "Instance metadata: Type=${INSTANCE_TYPE} ID=${INSTANCE_ID} Region=${REGION} AZ=${AZ}"
       
+      # Set up maximum lifetime timeout - do this early to ensure cleanup
+      MAX_LIFETIME_MINUTES=360
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Setting up maximum lifetime timeout: ${MAX_LIFETIME_MINUTES} minutes"
+      nohup bash -c "sleep ${MAX_LIFETIME_MINUTES}m && echo '[$(date)] Maximum lifetime reached' && shutdown -h now" > /var/log/max-lifetime.log 2>&1 &
+      
       log "Working directory: $homedir"
       cd "$homedir"
+      
       echo "echo 'Hello, World!'" > pre-runner-script.sh
       log "Running pre-runner script"
       source pre-runner-script.sh
@@ -484,8 +490,14 @@
       
       log "Instance metadata: Type=${INSTANCE_TYPE} ID=${INSTANCE_ID} Region=${REGION} AZ=${AZ}"
       
+      # Set up maximum lifetime timeout - do this early to ensure cleanup
+      MAX_LIFETIME_MINUTES=360
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Setting up maximum lifetime timeout: ${MAX_LIFETIME_MINUTES} minutes"
+      nohup bash -c "sleep ${MAX_LIFETIME_MINUTES}m && echo '[$(date)] Maximum lifetime reached' && shutdown -h now" > /var/log/max-lifetime.log 2>&1 &
+      
       log "Working directory: $homedir"
       cd "$homedir"
+      
       echo "echo 'Hello, World!'" > pre-runner-script.sh
       log "Running pre-runner script"
       source pre-runner-script.sh
@@ -776,8 +788,14 @@
   
   log "Instance metadata: Type=${INSTANCE_TYPE} ID=${INSTANCE_ID} Region=${REGION} AZ=${AZ}"
   
+  # Set up maximum lifetime timeout - do this early to ensure cleanup
+  MAX_LIFETIME_MINUTES=360
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Setting up maximum lifetime timeout: ${MAX_LIFETIME_MINUTES} minutes"
+  nohup bash -c "sleep ${MAX_LIFETIME_MINUTES}m && echo '[$(date)] Maximum lifetime reached' && shutdown -h now" > /var/log/max-lifetime.log 2>&1 &
+  
   log "Working directory: $homedir"
   cd "$homedir"
+  
   echo "echo 'Hello, World!'" > pre-runner-script.sh
   log "Running pre-runner script"
   source pre-runner-script.sh

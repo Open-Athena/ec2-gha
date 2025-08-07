@@ -8,6 +8,7 @@ name: EC2 Runner
 #   EC2_HOME_DIR - Default home directory
 #   EC2_KEY_NAME - Default SSH key pair name
 #   EC2_SECURITY_GROUP_ID - Default security group ID
+#   MAX_INSTANCE_LIFETIME - Default maximum instance lifetime in minutes
 #
 # Priority: inputs > vars > defaults
 
@@ -74,6 +75,10 @@ on:
         required: false
         type: string
         default: "1"
+      max_instance_lifetime:
+        description: "Maximum instance lifetime in minutes before automatic shutdown (falls back to vars.MAX_INSTANCE_LIFETIME, then 360 = 6 hours)"
+        required: false
+        type: string
       runner_grace_period:
         description: "Grace period in seconds before terminating instance after last job completes (falls back to vars.RUNNER_GRACE_PERIOD, then 60)"
         required: false
@@ -149,6 +154,7 @@ jobs:
           ec2_security_group_id: ${{ inputs.ec2_security_group_id || vars.EC2_SECURITY_GROUP_ID }}
           ec2_userdata: ${{ inputs.ec2_userdata }}
           instance_count: ${{ inputs.instance_count }}
+          max_instance_lifetime: ${{ inputs.max_instance_lifetime || vars.MAX_INSTANCE_LIFETIME }}
           runner_grace_period: ${{ inputs.runner_grace_period || vars.RUNNER_GRACE_PERIOD }}
           runner_initial_grace_period: ${{ inputs.runner_initial_grace_period || vars.RUNNER_INITIAL_GRACE_PERIOD }}
           runner_poll_interval: ${{ inputs.runner_poll_interval || vars.RUNNER_POLL_INTERVAL }}

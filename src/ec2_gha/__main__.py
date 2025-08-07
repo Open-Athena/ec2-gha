@@ -2,6 +2,7 @@ from ec2_gha.start import StartAWS
 from ec2_gha.defaults import (
     EC2_INSTANCE_TYPE,
     INSTANCE_COUNT,
+    MAX_INSTANCE_LIFETIME,
     RUNNER_GRACE_PERIOD,
     RUNNER_INITIAL_GRACE_PERIOD,
     RUNNER_POLL_INTERVAL,
@@ -40,6 +41,7 @@ def main():
         .update_state("INPUT_EC2_USERDATA", "userdata")
         .update_state("INPUT_EXTRA_GH_LABELS", "labels")
         .update_state("INPUT_INSTANCE_COUNT", "instance_count", type_hint=int)
+        .update_state("INPUT_MAX_INSTANCE_LIFETIME", "max_instance_lifetime")
         .update_state("INPUT_RUNNER_GRACE_PERIOD", "runner_grace_period")
         .update_state("INPUT_RUNNER_INITIAL_GRACE_PERIOD", "runner_initial_grace_period")
         .update_state("INPUT_RUNNER_POLL_INTERVAL", "runner_poll_interval")
@@ -59,6 +61,7 @@ def main():
     instance_count = params.pop("instance_count", INSTANCE_COUNT)
 
     # Apply defaults that weren't set via inputs or vars
+    params.setdefault("max_instance_lifetime", MAX_INSTANCE_LIFETIME)
     params.setdefault("runner_grace_period", RUNNER_GRACE_PERIOD)
     params.setdefault("runner_initial_grace_period", RUNNER_INITIAL_GRACE_PERIOD)
     params.setdefault("runner_poll_interval", RUNNER_POLL_INTERVAL)

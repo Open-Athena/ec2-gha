@@ -38,6 +38,7 @@ def aws_params_user_data():
         "github_workflow": "CI",
         "homedir": "/home/ec2-user",
         "labels": "label",
+        "max_instance_lifetime": "360",
         "repo": "omsf-eco-infra/awsinfratesting",
         "runner_grace_period": "61",
         "runner_initial_grace_period": "181",
