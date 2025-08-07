@@ -17,6 +17,7 @@ def aws():
             "instance_type": "t2.micro",
             "region_name": "us-east-1",
             "repo": "omsf-eco-infra/awsinfratesting",
+            "runner_grace_period": "120",
             "runner_release": "testing",
         }
         yield StartAWS(**params)
@@ -29,25 +30,51 @@ def test_build_user_data(aws):
     lines in the output, which is more meaningful than substring matching.
     """
     params = {
-        "homedir": "/home/ec2-user",
-        "labels": "label",
-        "repo": "omsf-eco-infra/awsinfratesting",
-        "runner_release": "test.tar.gz",
-        "script": "echo 'Hello, World!'",
-        "token": "test",
-        "userdata": "",
+        "github_run_id": "123456789",
+        "github_run_number": "42",
+        "github_workflow": "test-workflow",
+        "homedir": "/home/test-user",
+        "labels": "test-label",
+        "repo": "test-org/test-repo",
+        "runner_grace_period": "60",
+        "runner_release": "https://example.com/runner.tar.gz",
+        "script": "echo 'test script'",
+        "token": "test-token-xyz",
+        "userdata": "echo 'custom userdata'",
     }
-    # We strip this to ensure that we don't have any extra whitespace to fail our test
-    user_data = aws._build_user_data(**params).strip()
-    # Check that key elements are in the generated user data
-    assert "#!/bin/bash" in user_data
-    assert "set -e" in user_data
-    assert 'cd "/home/ec2-user"' in user_data
-    assert "echo 'Hello, World!'" in user_data
-    assert "export RUNNER_ALLOW_RUNASROOT=1" in user_data
-    assert "curl -L test.tar.gz -o runner.tar.gz" in user_data
-    assert "./config.sh --url https://github.com/omsf-eco-infra/awsinfratesting --token test --labels label --ephemeral" in user_data
-    assert "./run.sh" in user_data
+    user_data = aws._build_user_data(**params)
+    lines = user_data.strip().split('\n')
+
+    # Verify all substitutions happened (no template variables remain)
+    template_vars = [ f'${k}' for k in params ]
+    for var in template_vars:
+        assert var not in user_data, f"Template variable {var} was not substituted"
+
+    # Test specific lines exist in the output
+    assert "#!/bin/bash" in lines
+    assert "set -e" in lines
+    assert "echo 'custom userdata'" in lines
+    assert 'cd "/home/test-user"' in lines
+    assert "echo \"echo 'test script'\" > pre-runner-script.sh" in lines
+    assert "source pre-runner-script.sh" in lines
+    assert "export RUNNER_ALLOW_RUNASROOT=1" in lines
+    assert "curl -L https://example.com/runner.tar.gz -o runner.tar.gz" in lines
+    # Check that hook scripts are created inline
+    assert "cat > /usr/local/bin/job-started-hook.sh" in user_data
+    assert "cat > /usr/local/bin/job-completed-hook.sh" in user_data
+    assert "cat > /usr/local/bin/check-runner-termination.sh" in user_data
+    assert "chmod +x /usr/local/bin/job-started-hook.sh /usr/local/bin/job-completed-hook.sh /usr/local/bin/check-runner-termination.sh" in user_data
+    assert "echo \"ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/job-started-hook.sh\" > .env" in lines
+    assert "echo \"ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/job-completed-hook.sh\" >> .env" in lines
+    assert 'echo "RUNNER_HOME=/home/test-user" >> .env' in lines
+    assert 'echo "RUNNER_GRACE_PERIOD=60" >> .env' in lines
+    assert "mkdir -p /var/run/github-runner-jobs" in lines
+    # The config.sh line now includes --name and formatted labels
+    # Just check that the key components are present in the output
+    assert any("./config.sh" in line and "https://github.com/test-org/test-repo" in line and "test-token-xyz" in line for line in lines)
+    assert "touch /var/run/github-runner-started" in lines
+    assert "touch /var/run/github-runner-last-activity" in lines
+    assert "./run.sh" in lines
 
 
 def test_build_user_data_missing_params(aws):
@@ -71,6 +98,7 @@ def complete_params():
         "iam_instance_profile": "test",
         "image_id": "ami-0772db4c976d21e9b",
         "instance_type": "t2.micro",
+        "labels": "",
         "region_name": "us-east-1",
         "repo": "omsf-eco-infra/awsinfratesting",
         "root_device_size": 100,
@@ -81,7 +109,6 @@ def complete_params():
             {"Key": "Name", "Value": "test"},
             {"Key": "Owner", "Value": "test"},
         ],
-        "labels": "",
     }
     yield params
 
@@ -94,9 +121,14 @@ def complete_params():
 })
 def test_build_aws_params(complete_params):
     user_data_params = {
+        "github_run_id": "16725250800",
+        "github_run_number": "1",
+        "github_workflow": "CI",
         "homedir": "/home/ec2-user",
         "labels": "label",
         "repo": "omsf-eco-infra/awsinfratesting",
+        "runner_grace_period": "120",
+        "runner_initial_grace_period": "180",
         "runner_release": "test.tar.gz",
         "script": "echo 'Hello, World!'",
         "token": "test",

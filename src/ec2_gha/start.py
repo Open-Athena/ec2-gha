@@ -1,5 +1,6 @@
 import importlib.resources
 from dataclasses import dataclass, field
+from os import environ
 from string import Template
 import json
 
@@ -37,6 +38,10 @@ class StartAWS(CreateCloudInstance):
         A comma-separated list of labels to apply to the runner. Defaults to an empty string.
     root_device_size : int
         The size of the root device. Defaults to 0 which uses the default.
+    runner_initial_grace_period : str
+        Grace period in seconds before terminating if no jobs have started. Defaults to "180".
+    runner_grace_period : str
+        Grace period in seconds before terminating instance after last job completes. Defaults to "120".
     script : str
         The script to run on the instance. Defaults to an empty string.
     security_group_id : str
@@ -60,6 +65,8 @@ class StartAWS(CreateCloudInstance):
     key_name: str = ""
     labels: str = ""
     root_device_size: int = 0
+    runner_grace_period: str = "120"
+    runner_initial_grace_period: str = "180"
     runner_release: str = ""
     script: str = ""
     security_group_id: str = ""
@@ -246,18 +253,21 @@ class StartAWS(CreateCloudInstance):
         id_dict = {}
         for token in self.gh_runner_tokens:
             label = gh.GitHubInstance.generate_random_label()
-            labels = self.labels
-            if labels == "":
-                labels = label
-            else:
-                labels = self.labels + "," + label
+            # Combine user labels with the generated runner label
+            labels = f"{self.labels},{label}" if self.labels else label
+
             user_data_params = {
-                "token": token,
-                "repo": self.repo,
+                "github_workflow": environ.get("GITHUB_WORKFLOW", ""),
+                "github_run_id": environ.get("GITHUB_RUN_ID", ""),
+                "github_run_number": environ.get("GITHUB_RUN_NUMBER", ""),
                 "homedir": self.home_dir,
-                "script": self.script,
-                "runner_release": self.runner_release,
                 "labels": labels,
+                "repo": self.repo,
+                "runner_grace_period": self.runner_grace_period,
+                "runner_initial_grace_period": self.runner_initial_grace_period,
+                "runner_release": self.runner_release,
+                "script": self.script,
+                "token": token,
                 "userdata": self.userdata,
             }
             params = self._build_aws_params(user_data_params)
