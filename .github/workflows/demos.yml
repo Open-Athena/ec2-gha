@@ -1,8 +1,22 @@
 name: Run All Demos
 on:
   workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
 jobs:
-  placeholder:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Placeholder workflow – being developed in \#2 / rw/hooks branch"
+  demo-00-minimal:
+    uses: ./.github/workflows/demo-00-minimal.yml
+    secrets: inherit
+  demo-job-seq:
+    uses: ./.github/workflows/demo-job-seq.yml
+    secrets: inherit
+  demo-gpu-dbg:
+    uses: ./.github/workflows/demo-gpu-dbg.yml
+    secrets: inherit
+  demo-archs:
+    uses: ./.github/workflows/demo-archs.yml
+    secrets: inherit
+  demo-matrix-wide:
+    uses: ./.github/workflows/demo-matrix-wide.yml
+    secrets: inherit
