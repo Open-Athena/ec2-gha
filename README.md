@@ -1,66 +1,533 @@
-# start_aws_gha_runner
-This repository contains the code to start a GitHub Actions runner on an AWS EC2 instance.
+# ec2-gha
+Run GitHub Actions on ephemeral EC2 instances.
 
-## Inputs
-| Input                 | Description                                                                                                        | Required for start | Default |
-|-----------------------|--------------------------------------------------------------------------------------------------------------------|------------------- |---------|
-| aws_home_dir          | The AWS AMI home directory to use for your runner. Will not start if not specified.                                | true               |         |
-| aws_iam_role          | The optional AWS IAM role to assume for provisioning your runner.                                                  | false              |         |
-| aws_image_id          | The machine AMI to use for your runner. This AMI can be a default but should have docker installed in the AMI.     | true               |         |
-| aws_instance_type     | The type of instance to use for your runner. For example: t2.micro, t4g.nano, etc. Will not start if not specified.| true               |         |
-| aws_region_name       | The AWS region name to use for your runner. Defaults to AWS_REGION                                                 | true               |         |
-| aws_root_device_size  | The root device size in GB to use for your runner.                                                                 | false              | The AMI default root disk size |
-| aws_security_group_id | The AWS security group ID to use for your runner. Will use the account default security group if not specified.    | false              | The default AWS security group |
-| aws_subnet_id         | The AWS subnet ID to use for your runner. Will use the account default subnet if not specified.                    | false              | The default AWS subnet ID |
-| aws_tags              | The AWS tags to use for your runner, formatted as a JSON list. See `README` for more details.                      | false              |         |
-| extra_gh_labels       | Any extra GitHub labels to tag your runners with. Passed as a comma-separated list with no spaces.                 | false              |         |
-| instance_count        | The number of instances to create, defaults to 1                                                                   | false              | 1       |
-| repo     | The repo to run against. Will use the current repo if not specified.       | false    | The repo the runner is running in |
-| gh_timeout            | The timeout in seconds to wait for the runner to come online as seen by the GitHub API. Defaults to 1200 seconds.  | false              | 1200    |
-| aws_userdata          | User data script to run on instance startup. Use this to configure the instance before the runner starts.          | false              |         |
-| aws_key_name          | Name of the EC2 key pair to use for SSH access.                                                                   | false              |         |
+**TOC**
+<!-- toc -->
+- [Quick Start](#quick-start)
+    - [Configuring `EC2_LAUNCH_ROLE`](#ec2-launch-role)
+    - [Inputs](#inputs)
+    - [Output](#output)
+- [Technical Details](#technical)
+    - [Runner Lifecycle](#lifecycle)
+    - [Multi-Job Workflows](#multi-job)
+    - [How Termination Works](#termination)
+    - [CloudWatch Logs Integration](#cloudwatch)
+    - [Debugging and Troubleshooting](#debugging)
+        - [SSH Access](#ssh)
+        - [Important Log Files](#logs)
+        - [Common Issues](#issues)
+    - [Implementation Notes](#implementation)
+    - [Default AWS Tags](#tags)
+- [Appendix: IAM Role Setup](#iam-setup-appendix)
+    - [Using Pulumi](#pulumi)
+    - [Using AWS CLI](#aws-cli)
+- [Acknowledgements](#acks)
+<!-- /toc -->
 
-## Outputs
-| Name | Description |
-| ---- | ----------- |
-| mapping | A JSON object mapping instance IDs to unique GitHub runner labels. This is used in conjunction with the `instance_mapping` input when stopping. |
-| instances | A JSON list of the GitHub runner labels to be used in the 'runs-on' field |
-| label | The single runner label (only available when instance_count=1) |
-| instance-id | The EC2 instance ID (only available when instance_count=1) |
+## Quick Start <a id="quick-start"></a>
 
-## Example usage
+Call [`runner.yml`] as a [reusable workflow]:
 
 ```yaml
-name: Start AWS GHA Runner
-on:
-  workflow_run:
+name: GPU Tests
+on: [push]
+permissions:
+  id-token: write  # Required for AWS OIDC
+  contents: read   # Normally on by default, but explicit `permissions` block undoes that, so we explicitly re-enable
 jobs:
-  start-aws-runner:
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-    outputs:
-      mapping: ${{ steps.aws-start.outputs.mapping }}
-      instances: ${{ steps.aws-start.outputs.instances }}
+  ec2:
+    uses: Open-Athena/ec2-gha/.github/workflows/runner.yml@main
+    # Required:
+    # - `secrets.GH_SA_TOKEN` (GitHub token with repo admin access)
+    # - `vars.EC2_LAUNCH_ROLE` (role with GitHub OIDC access to this repo)
+    secrets: inherit
+  gpu-test:
+    needs: ec2
+    runs-on: ${{ needs.ec2.outputs.instance }}
     steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE }}
-          aws-region: us-east-1
-      - name: Create cloud runner
-        id: aws-start
-        uses: omsf/start-aws-gha-runner@v1.0.0
-        with:
-          aws_image_id: ami-0f7c4a792e3fb63c8
-          aws_instance_type: g4dn.xlarge
-          aws_home_dir: /home/ubuntu
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
+      - run: nvidia-smi  # GPU node!
 ```
 
-[Open-Athena/ec2] also shows [example usage][ec2 example] of `aws_userdata`, to automatically shut down the instance.
+**Required Setup:**
+1. Create a GitHub Personal Access Token with `repo` scope and admin access to your repository
+2. Add it as a repository secret named `GH_SA_TOKEN`
+3. Configure an AWS IAM role with GitHub OIDC trust policy (see [below](#ec2-launch-role))
+4. Add the role ARN as a repository variable named `EC2_LAUNCH_ROLE`
 
-[Open-Athena/ec2]: https://github.com/Open-Athena/ec2
-[ec2 example]: https://github.com/Open-Athena/ec2/blob/94e815ac681ba5836ce07cda894d53d3dd900afd/.github/workflows/runner.yml#L83
+**Optional Setup:**
+- `EC2_INSTANCE_PROFILE`: Only needed if you want CloudWatch Logs or need the EC2 instances to access AWS APIs
+- See [CloudWatch Logs Integration](#cloudwatch) for details
+
+The `EC2_LAUNCH_ROLE` is passed to [aws-actions/configure-aws-credentials]; if you'd like to authenticate with AWS using other parameters, please [file an issue] to let us know.
+
+### Configuring `EC2_LAUNCH_ROLE` <a id="ec2-launch-role"></a>
+
+The launch role must be able to launch, tag, describe, and terminate EC2 instances, and should be integrated with GitHub's OIDC provider.
+
+For detailed setup instructions, see [Appendix: IAM Role Setup](#iam-setup-appendix) which includes examples using both Pulumi and AWS CLI.
+
+After creating the role, add it as a repository variable:
+```bash
+gh variable set EC2_LAUNCH_ROLE --body "arn:aws:iam::123456789012:role/GitHubActionsEC2Role"
+```
+
+### Inputs <a id="inputs"></a>
+
+The reusable workflow ([`runner.yml`]) requires:
+- **Secret**: `GH_SA_TOKEN` - GitHub token with admin access to manage self-hosted runners
+- **Variable or Input**: `ec2_launch_role` - AWS role ARN for launching EC2 instances (input takes precedence over `vars.EC2_LAUNCH_ROLE`)
+
+Optional inputs (all fall back to corresponding `vars.*` if not provided):
+- `action_ref` - ec2-gha Git ref to checkout (branch/tag/SHA); auto-detected if not specified
+- `cloudwatch_logs_group` - CloudWatch Logs group name for streaming logs (falls back to `vars.CLOUDWATCH_LOGS_GROUP`)
+- `ec2_home_dir` - Home directory (default: `/home/ubuntu`)
+- `ec2_image_id` - AMI ID (default: Deep Learning AMI)
+- `ec2_instance_profile` - IAM instance profile name for EC2 instances (useful for on-instance debugging [via SSH](#ssh), required for [CloudWatch logging](#cloudwatch))
+- `ec2_instance_type` - Instance type (default: `g4dn.xlarge`)
+- `ec2_key_name` - EC2 key pair name (required for [SSH access](#ssh))
+- `ec2_root_device_size` - Root device size in GB (default: 0 = use AMI default)
+- `ec2_security_group_id` - Security group ID (required for [SSH access](#ssh), should expose inbound port 22)
+- `max_instance_lifetime` - Maximum instance lifetime in minutes before automatic shutdown (falls back to `vars.MAX_INSTANCE_LIFETIME`, default: 360 = 6 hours)
+- `runner_grace_period` - Grace period in seconds before terminating (default: 120)
+- `runner_initial_grace_period` - Grace period in seconds before terminating instance if no jobs start (default: 180)
+- `ssh_pubkey` - SSH public key for debugging access
+
+It also uses organization/repository variables as fallbacks for most inputs (e.g. `vars.{EC2_LAUNCH_ROLE,EC2_IMAGE_ID,…)`).
+
+### Output <a id="output"></a>
+
+| Name | Description |
+| ---- | ----------- |
+| instance | The runner label to use in the 'runs-on' field for subsequent jobs |
+
+## Technical Details <a id="technical"></a>
+
+### Runner Lifecycle <a id="lifecycle"></a>
+
+This workflow creates EC2 instances with GitHub Actions runners that:
+- Automatically register with your repository
+- Support both single and multi-job workflows
+- Self-terminate when work is complete
+- Use [GitHub's native runner hooks][hooks] for job tracking
+
+### Multi-Job Workflows <a id="multi-job"></a>
+
+The runner supports multiple sequential jobs on the same instance (see also [demo-multi-job.yml]):
+
+```yaml
+jobs:
+  ec2:
+    uses: Open-Athena/ec2-gha/.github/workflows/runner.yml@main
+    secrets: inherit
+    with:
+      runner_grace_period: "120"  # 2 minutes between jobs
+
+  prepare:
+    needs: ec2
+    runs-on: ${{ needs.ec2.outputs.instance }}
+    steps:
+      - run: echo "Preparing environment"
+
+  train:
+    needs: [ec2, prepare]
+    runs-on: ${{ needs.ec2.outputs.instance }}
+    steps:
+      - run: echo "Training model"
+
+  evaluate:
+    needs: [ec2, train]
+    runs-on: ${{ needs.ec2.outputs.instance }}
+    steps:
+      - run: echo "Evaluating results"
+```
+
+### How Termination Works <a id="termination"></a>
+
+1. [GitHub Actions runner hooks][hooks] track job lifecycle events
+2. When a job completes, the hook checks if other jobs are running
+3. If no jobs are active, a termination check is scheduled after the grace period
+4. The instance terminates if still idle when the check runs
+5. New jobs starting within the grace period cancel the termination
+6. Before shutdown, the runner process is gracefully stopped to remove itself from GitHub
+
+### CloudWatch Logs Integration <a id="cloudwatch"></a>
+
+CloudWatch Logs integration is optional. To stream runner logs to CloudWatch Logs:
+
+1. **Create a CloudWatch Logs group**:
+   ```bash
+   aws logs create-log-group --log-group-name /aws/ec2/github-runners
+   ```
+
+2. **Create an IAM role for your EC2 instances** with CloudWatch Logs permissions:
+
+   **Important**: This is a separate role from your GitHub Actions launch role (`EC2_LAUNCH_ROLE`). The EC2 instances need their own IAM role to write logs. This role is only required if you want to use CloudWatch Logs.
+
+   See [Appendix: IAM Role Setup](#iam-setup-appendix) for detailed instructions on creating the `EC2_INSTANCE_PROFILE`.
+
+3. **Configure the workflow** with the IAM role:
+   ```yaml
+   jobs:
+     ec2:
+       uses: Open-Athena/ec2-gha/.github/workflows/runner.yml@main
+       with:
+         cloudwatch_logs_group: /aws/ec2/github-runners
+         ec2_instance_profile: GitHubRunnerEC2Profile  # The instance profile from step 2
+       secrets: inherit
+   ```
+
+   Or set as a repository variable:
+   ```bash
+   gh variable set EC2_INSTANCE_PROFILE --body "GitHubRunnerEC2Profile"
+   ```
+
+The following logs will be streamed to CloudWatch:
+- `/var/log/runner-setup.log` - Runner installation and setup
+- `/tmp/job-started-hook.log` - Job start events with workflow/job details
+- `/tmp/job-completed-hook.log` - Job completion events with remaining job count
+- `/tmp/termination-check.log` - Instance termination checks every 30 seconds
+- `~/actions-runner/_diag/Runner_*.log` - GitHub runner diagnostic logs
+- `~/actions-runner/_diag/Worker_*.log` - GitHub runner worker process logs
+
+### Debugging and Troubleshooting <a id="debugging"></a>
+
+#### SSH Access <a id="ssh"></a>
+To enable SSH debugging, provide:
+- `ec2_security_group_id`: A security group allowing SSH (port 22)
+- Either:
+  - `ec2_key_name`: An EC2 key pair name (for pre-existing AWS keys)
+  - `ssh_pubkey`: An SSH public key string (for ad-hoc access)
+
+#### Important Log Files <a id="logs"></a>
+Once connected to the instance:
+- `/var/log/runner-setup.log` - Runner installation and registration
+- `/var/log/cloud-init-output.log` - Complete userdata execution
+- `/tmp/job-started-hook.log` - Job start tracking with detailed metadata
+- `/tmp/job-completed-hook.log` - Job completion tracking with job counts
+- `/tmp/termination-check.log` - Termination check logs (runs every 30 seconds)
+- `/var/run/github-runner-jobs/*.job` - Individual job status files
+- `~/actions-runner/_diag/Runner_*.log` - GitHub runner process logs (job scheduling, API calls)
+- `~/actions-runner/_diag/Worker_*.log` - Job execution logs
+
+#### Common Issues <a id="issues"></a>
+
+**Runner fails to register**
+- Check that `GH_PAT` has admin access to the repository
+- Verify the AMI has required dependencies (git, tar, etc.)
+- Check `/var/log/cloud-init-output.log` for errors
+
+**Multi-job workflow fails**
+- Increase `runner_grace_period` to allow more time between jobs
+- Check `/tmp/job-completed-hook.log` for premature termination
+- Verify all jobs properly depend on the start-runner job
+
+**Instance doesn't terminate**
+- SSH to the instance and check `/tmp/job-completed-hook.log`
+- Verify runner hooks are configured: `cat ~/actions-runner/.env`
+- Check for stuck jobs in `/var/run/github-runner-jobs/`
+
+### Implementation Notes <a id="implementation"></a>
+
+- Uses non-ephemeral runners to support instance-reuse across jobs
+- Implements activity-based termination with systemd timer
+- Uses activity-based termination with systemd timer checks every 30 seconds
+- Terminates only after runner_grace_period seconds of inactivity (no race conditions)
+- Sets maximum instance lifetime (configurable via `max_instance_lifetime`, default: 6 hours)
+- Supports custom AMIs with pre-installed dependencies
+
+### Default AWS Tags <a id="tags"></a>
+
+The action automatically adds these tags to EC2 instances (unless already provided):
+- `Name`: Auto-generated from repository/workflow/run-number (e.g., "my-repo/test-workflow/#123")
+- `repository`: GitHub repository full name
+- `workflow`: Workflow name
+- `gha_url`: Direct link to the GitHub Actions run
+
+These help with debugging and cost tracking. You can override any of these by providing your own tags with the same keys.
+
+## Appendix: IAM Role Setup <a id="iam-setup-appendix"></a>
+
+This appendix provides detailed instructions for setting up the required IAM roles using either Pulumi or AWS CLI.
+
+### Using Pulumi <a id="pulumi"></a>
+
+<details>
+<summary>Complete Pulumi configuration for both EC2_LAUNCH_ROLE and EC2_INSTANCE_PROFILE</summary>
+
+```python
+"""Create EC2_LAUNCH_ROLE and EC2_INSTANCE_PROFILE for GitHub Actions workflows."""
+
+import pulumi
+import pulumi_aws as aws
+
+current = aws.get_caller_identity()
+
+# Create IAM OIDC provider for GitHub Actions
+github_oidc_provider = aws.iam.OpenIdConnectProvider(
+    "github-actions",
+    client_id_lists=["sts.amazonaws.com"],
+    thumbprint_lists=["2b18947a6a9fc7764fd8b5fb18a863b0c6dac24f"],
+    url="https://token.actions.githubusercontent.com",
+)
+
+# EC2 launch policy for GitHub Actions
+ec2_launch_policy = aws.iam.Policy("github-actions-ec2-launch-policy",
+    policy="""{
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "ec2:RunInstances",
+                    "ec2:TerminateInstances",
+                    "ec2:DescribeInstances",
+                    "ec2:DescribeInstanceStatus",
+                    "ec2:DescribeImages",
+                    "ec2:CreateTags"
+                ],
+                "Resource": "*"
+            },
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "iam:PassRole"
+                ],
+                "Resource": "*",
+                "Condition": {
+                    "StringEquals": {
+                        "iam:PassedToService": "ec2.amazonaws.com"
+                    }
+                }
+            }
+        ]
+    }"""
+)
+
+# CloudWatch Logs policy for EC2 instances
+cloudwatch_logs_policy = aws.iam.Policy("ec2-instance-cloudwatch-policy",
+    policy="""{
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents",
+                    "logs:DescribeLogStreams"
+                ],
+                "Resource": "arn:aws:logs:*:*:*"
+            }
+        ]
+    }"""
+)
+
+# Create IAM role for EC2 instances (shared across all repos)
+ec2_instance_role = aws.iam.Role("github-runner-ec2-instance-role",
+    assume_role_policy="""{
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Principal": {
+                    "Service": "ec2.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+            }
+        ]
+    }"""
+)
+
+# Attach CloudWatch policy to instance role
+cloudwatch_policy_attachment = aws.iam.RolePolicyAttachment("ec2-instance-cloudwatch-attachment",
+    role=ec2_instance_role.name,
+    policy_arn=cloudwatch_logs_policy.arn
+)
+
+# Create instance profile
+ec2_instance_profile = aws.iam.InstanceProfile("github-runner-ec2-profile",
+    role=ec2_instance_role.name
+)
+
+# Export the instance profile name
+pulumi.export("ec2_instance_profile_name", ec2_instance_profile.name)
+
+# Configure which repos can use the launch role
+ORGS_REPOS = [
+    "your-org/your-repo",
+    "your-org/*",  # Allow all repos in org
+]
+
+# Create IAM role that GitHub Actions can assume, one per repo
+for index, repo in enumerate(ORGS_REPOS):
+    github_actions_role = aws.iam.Role(f"github-actions-launch-role-{index}",
+        assume_role_policy=f"""{
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Federated": "arn:aws:iam:{current.account_id}:oidc-provider/token.actions.githubusercontent.com"
+                    },
+                    "Action": "sts:AssumeRoleWithWebIdentity",
+                    "Condition": {
+                        "StringLike": {
+                            "token.actions.githubusercontent.com:sub": "repo:{repo}:*"
+                        }
+                    }
+                }
+            ]
+        }"""
+    )
+
+    # Attach the EC2 launch policy
+    ec2_policy_attachment = aws.iam.RolePolicyAttachment(f"github-actions-ec2-launch-attachment-{index}",
+        role=github_actions_role.name,
+        policy_arn=ec2_launch_policy.arn
+    )
+
+    # Export the role ARN
+    pulumi.export(f"ec2_launch_role_arn_{repo}", github_actions_role.arn)
+```
+</details>
+
+### Using AWS CLI <a id="aws-cli"></a>
+
+<details>
+<summary>Complete AWS CLI commands for both EC2_LAUNCH_ROLE and EC2_INSTANCE_PROFILE</summary>
+
+```bash
+# 1. Create the OIDC provider (if not already exists)
+aws iam create-open-id-connect-provider \
+  --url https://token.actions.githubusercontent.com \
+  --client-id-list sts.amazonaws.com \
+  --thumbprint-list 2b18947a6a9fc7764fd8b5fb18a863b0c6dac24f
+
+# 2. Create the EC2 launch policy
+aws iam create-policy \
+  --policy-name GitHubActionsEC2LaunchPolicy \
+  --policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": [
+          "ec2:RunInstances",
+          "ec2:TerminateInstances",
+          "ec2:DescribeInstances",
+          "ec2:DescribeInstanceStatus",
+          "ec2:DescribeImages",
+          "ec2:CreateTags"
+        ],
+        "Resource": "*"
+      },
+      {
+        "Effect": "Allow",
+        "Action": [
+          "iam:PassRole"
+        ],
+        "Resource": "*",
+        "Condition": {
+          "StringEquals": {
+            "iam:PassedToService": "ec2.amazonaws.com"
+          }
+        }
+      }
+    ]
+  }'
+
+# 3. Create the EC2 launch role with trust policy
+# Replace YOUR_ACCOUNT_ID and YOUR_ORG/YOUR_REPO
+aws iam create-role \
+  --role-name GitHubActionsEC2LaunchRole \
+  --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Principal": {
+          "Federated": "arn:aws:iam::YOUR_ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com"
+        },
+        "Action": "sts:AssumeRoleWithWebIdentity",
+        "Condition": {
+          "StringLike": {
+            "token.actions.githubusercontent.com:sub": "repo:YOUR_ORG/YOUR_REPO:*"
+          }
+        }
+      }
+    ]
+  }'
+
+# 4. Attach the launch policy to the role
+aws iam attach-role-policy \
+  --role-name GitHubActionsEC2LaunchRole \
+  --policy-arn arn:aws:iam::YOUR_ACCOUNT_ID:policy/GitHubActionsEC2LaunchPolicy
+
+# 5. Create CloudWatch Logs policy for EC2 instances
+aws iam create-policy \
+  --policy-name GitHubRunnerCloudWatchPolicy \
+  --policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogStreams"
+        ],
+        "Resource": "arn:aws:logs:*:*:*"
+      }
+    ]
+  }'
+
+# 6. Create EC2 instance role
+aws iam create-role \
+  --role-name GitHubRunnerEC2InstanceRole \
+  --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Principal": {
+          "Service": "ec2.amazonaws.com"
+        },
+        "Action": "sts:AssumeRole"
+      }
+    ]
+  }'
+
+# 7. Attach CloudWatch policy to instance role
+aws iam attach-role-policy \
+  --role-name GitHubRunnerEC2InstanceRole \
+  --policy-arn arn:aws:iam::YOUR_ACCOUNT_ID:policy/GitHubRunnerCloudWatchPolicy
+
+# 8. Create instance profile
+aws iam create-instance-profile \
+  --instance-profile-name GitHubRunnerEC2Profile
+
+# 9. Add role to instance profile
+aws iam add-role-to-instance-profile \
+  --instance-profile-name GitHubRunnerEC2Profile \
+  --role-name GitHubRunnerEC2InstanceRole
+
+# 10. Configure repository variables
+gh variable set EC2_LAUNCH_ROLE --body "arn:aws:iam::YOUR_ACCOUNT_ID:role/GitHubActionsEC2LaunchRole"
+gh variable set EC2_INSTANCE_PROFILE --body "GitHubRunnerEC2Profile"
+```
+</details>
+
+## Acknowledgements <a id="acks"></a>
+This repo borrows from or reuses:
+- [omsf/start-aws-gha-runner] (upstream; this fork adds self-termination and various features)
+- [related-sciences/gce-github-runner] (self-terminating GCE runner, using [job hooks][hooks])
+
+[`runner.yml`]: .github/workflows/runner.yml
+[demo-multi-job.yml]: .github/workflows/demo-multi-job.yml
+[aws-actions/configure-aws-credentials]: https://github.com/aws-actions/configure-aws-credentials
+[hooks]: https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/run-scripts
+[omsf/start-aws-gha-runner]: https://github.com/omsf/start-aws-gha-runner
+[related-sciences/gce-github-runner]: https://github.com/related-sciences/gce-github-runner
+[reusable workflow]: https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows#calling-a-reusable-workflow
+[file an issue]: https://github.com/Open-Athena/ec2-gha/issues/new/choose

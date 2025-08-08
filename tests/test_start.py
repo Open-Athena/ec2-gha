@@ -1,123 +1,209 @@
+from unittest.mock import patch, mock_open, Mock
+
 import pytest
-from moto import mock_aws
-import boto3
-from unittest.mock import call, patch, mock_open, Mock
-from start_aws_gha_runner.start import StartAWS
 from botocore.exceptions import WaiterError, ClientError
+from moto import mock_aws
+
+from ec2_gha.start import StartAWS
 
 
 @pytest.fixture(scope="function")
 def aws():
     with mock_aws():
         params = {
+            "gh_runner_tokens": ["testing"],
+            "home_dir": "/home/ec2-user",
             "image_id": "ami-0772db4c976d21e9b",
             "instance_type": "t2.micro",
             "region_name": "us-east-1",
-            "gh_runner_tokens": ["testing"],
-            "home_dir": "/home/ec2-user",
-            "runner_release": "testing",
             "repo": "omsf-eco-infra/awsinfratesting",
+            "runner_grace_period": "120",
+            "runner_release": "testing",
         }
         yield StartAWS(**params)
 
 
 def test_build_user_data(aws):
+    """Test that template parameters are correctly substituted
+
+    This test verifies template substitution by checking for specific
+    lines in the output, which is more meaningful than substring matching.
+    """
     params = {
-        "homedir": "/home/ec2-user",
-        "script": "echo 'Hello, World!'",
-        "repo": "omsf-eco-infra/awsinfratesting",
-        "token": "test",
-        "labels": "label",
-        "runner_release": "test.tar.gz",
+        "cloudwatch_logs_group": "",  # Empty = disabled
+        "github_run_id": "123456789",
+        "github_run_number": "42",
+        "github_workflow": "test-workflow",
+        "homedir": "/home/test-user",
+        "labels": "test-label",
+        "max_instance_lifetime": "360",
+        "repo": "test-org/test-repo",
+        "runner_grace_period": "60",
+        "runner_release": "https://example.com/runner.tar.gz",
+        "script": "echo 'test script'",
+        "ssh_pubkey": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host",
+        "token": "test-token-xyz",
+        "userdata": "echo 'custom userdata'",
     }
-    # We strip this to ensure that we don't have any extra whitespace to fail our test
-    user_data = aws._build_user_data(**params).strip()
-    # We also strip here
-    file = """#!/bin/bash
-cd "/home/ec2-user"
-echo "echo 'Hello, World!'" > pre-runner-script.sh
-source pre-runner-script.sh
-export RUNNER_ALLOW_RUNASROOT=1
-# We will get the latest release from the GitHub API
-curl -L test.tar.gz -o runner.tar.gz
-tar xzf runner.tar.gz
-./config.sh --url https://github.com/omsf-eco-infra/awsinfratesting --token test --labels label --ephemeral
-./run.sh
-    """.strip()
-    assert user_data == file
+    user_data = aws._build_user_data(**params)
+    lines = user_data.strip().split('\n')
+
+    # Verify all substitutions happened (no template variables remain)
+    template_vars = [ f'${k}' for k in params ]
+    for var in template_vars:
+        assert var not in user_data, f"Template variable {var} was not substituted"
+
+    # Test specific lines exist in the output
+    assert "#!/bin/bash" in lines
+    assert "set -e" in lines
+    assert "echo 'custom userdata'" in lines
+    assert 'cd "/home/test-user"' in lines
+    assert "echo \"echo 'test script'\" > pre-runner-script.sh" in lines
+    assert "source pre-runner-script.sh" in lines
+    assert "export RUNNER_ALLOW_RUNASROOT=1" in lines
+    assert "curl -L https://example.com/runner.tar.gz -o runner.tar.gz" in lines
+    assert '    echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host" >> "/home/test-user/.ssh/authorized_keys"' in lines
+    # Check that hook scripts are created inline
+    assert "cat > /usr/local/bin/job-started-hook.sh" in user_data
+    assert "cat > /usr/local/bin/job-completed-hook.sh" in user_data
+    assert "cat > /usr/local/bin/check-runner-termination.sh" in user_data
+    assert "chmod +x /usr/local/bin/job-started-hook.sh /usr/local/bin/job-completed-hook.sh /usr/local/bin/check-runner-termination.sh" in user_data
+    assert "echo \"ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/job-started-hook.sh\" > .env" in lines
+    assert "echo \"ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/job-completed-hook.sh\" >> .env" in lines
+    assert 'echo "RUNNER_HOME=/home/test-user" >> .env' in lines
+    assert 'echo "RUNNER_GRACE_PERIOD=60" >> .env' in lines
+    assert "mkdir -p /var/run/github-runner-jobs" in lines
+    # The config.sh line now includes --name and formatted labels
+    # Just check that the key components are present in the output
+    assert any("./config.sh" in line and "https://github.com/test-org/test-repo" in line and "test-token-xyz" in line for line in lines)
+    assert "touch /var/run/github-runner-started" in lines
+    assert "touch /var/run/github-runner-last-activity" in lines
+    assert "./run.sh" in lines
+
+    # Check CloudWatch block exists but won't execute when empty
+    assert 'if [ "" != "" ]; then' in user_data  # Empty string test will be false
+    assert "Installing CloudWatch agent" in user_data  # Block exists in script
+    # The agent won't actually be installed because the if condition is false
+
+
+def test_build_user_data_with_cloudwatch(aws):
+    """Test user data with CloudWatch Logs enabled"""
+    params = {
+        "cloudwatch_logs_group": "/aws/ec2/github-runners",
+        "github_run_id": "123456789",
+        "github_run_number": "42",
+        "github_workflow": "test-workflow",
+        "homedir": "/home/test-user",
+        "labels": "test-label",
+        "max_instance_lifetime": "360",
+        "repo": "test-org/test-repo",
+        "runner_grace_period": "30",
+        "runner_initial_grace_period": "120",
+        "runner_release": "https://example.com/runner.tar.gz",
+        "script": "echo 'test script'",
+        "ssh_pubkey": "",
+        "token": "test-token-xyz",
+        "userdata": "",
+    }
+    user_data = aws._build_user_data(**params)
+
+    # Check CloudWatch agent installation
+    assert "Installing CloudWatch agent" in user_data
+    assert "amazon-cloudwatch-agent.deb" in user_data
+    assert "/aws/ec2/github-runners" in user_data
+    assert "log_group_name" in user_data
+    assert "job-started-hook.log" in user_data
+    assert "job-completed-hook.log" in user_data
+    assert "termination-check.log" in user_data
 
 
 def test_build_user_data_missing_params(aws):
+    """Test that missing required parameters raise an exception"""
     params = {
         "homedir": "/home/ec2-user",
-        "script": "echo 'Hello, World!'",
         "repo": "omsf-eco-infra/awsinfratesting",
+        "script": "echo 'Hello, World!'",
         "token": "test",
+        "cloudwatch_logs_group": "",
+        # Missing: labels, runner_release
     }
     with pytest.raises(Exception):
         aws._build_user_data(**params)
 
+
 @pytest.fixture(scope="function")
 def complete_params():
     params = {
+        "gh_runner_tokens": ["test"],
+        "home_dir": "/home/ec2-user",
+        "iam_instance_profile": "test",
         "image_id": "ami-0772db4c976d21e9b",
         "instance_type": "t2.micro",
+        "labels": "",
+        "region_name": "us-east-1",
+        "repo": "omsf-eco-infra/awsinfratesting",
+        "root_device_size": 100,
+        "runner_release": "test.tar.gz",
+        "security_group_id": "test",
+        "subnet_id": "test",
         "tags": [
             {"Key": "Name", "Value": "test"},
             {"Key": "Owner", "Value": "test"},
         ],
-        "region_name": "us-east-1",
-        "gh_runner_tokens": ["testing"],
-        "home_dir": "/home/ec2-user",
-        "runner_release": "testing",
-        "repo": "omsf-eco-infra/awsinfratesting",
-        "subnet_id": "test",
-        "security_group_id": "test",
-        "iam_role": "test",
-        "root_device_size": 100
     }
     yield params
 
+
+@patch.dict('os.environ', {
+    'GITHUB_REPOSITORY': 'Open-Athena/ec2-gha',
+    'GITHUB_WORKFLOW': 'CI',
+    'GITHUB_SERVER_URL': 'https://github.com',
+    'GITHUB_RUN_ID': '16725250800'
+})
 def test_build_aws_params(complete_params):
     user_data_params = {
-        "token": "test",
-        "repo": "omsf-eco-infra/awsinfratesting",
+        "cloudwatch_logs_group": "",
+        "github_run_id": "16725250800",
+        "github_run_number": "1",
+        "github_workflow": "CI",
         "homedir": "/home/ec2-user",
-        "script": "echo 'Hello, World!'",
-        "runner_release": "test.tar.gz",
         "labels": "label",
+        "max_instance_lifetime": "360",
+        "repo": "omsf-eco-infra/awsinfratesting",
+        "runner_grace_period": "120",
+        "runner_initial_grace_period": "180",
+        "runner_release": "test.tar.gz",
+        "script": "echo 'Hello, World!'",
+        "ssh_pubkey": "",
+        "token": "test",
+        "userdata": "",
     }
     aws = StartAWS(**complete_params)
     params = aws._build_aws_params(user_data_params)
-    assert params == {
-        "ImageId": "ami-0772db4c976d21e9b",
-        "InstanceType": "t2.micro",
-        "MinCount": 1,
-        "MaxCount": 1,
-        "SubnetId": "test",
-        "SecurityGroupIds": ["test"],
-        "IamInstanceProfile": {"Name": "test"},
-        "UserData": """#!/bin/bash
-cd "/home/ec2-user"
-echo "echo 'Hello, World!'" > pre-runner-script.sh
-source pre-runner-script.sh
-export RUNNER_ALLOW_RUNASROOT=1
-# We will get the latest release from the GitHub API
-curl -L test.tar.gz -o runner.tar.gz
-tar xzf runner.tar.gz
-./config.sh --url https://github.com/omsf-eco-infra/awsinfratesting --token test --labels label --ephemeral
-./run.sh
-""",
-        "TagSpecifications": [
-            {
-                "ResourceType": "instance",
-                "Tags": [
-                    {"Key": "Name", "Value": "test"},
-                    {"Key": "Owner", "Value": "test"},
-                ],
-            }
-        ],
-    }
+
+    # Test structure without checking exact UserData content
+    assert params["ImageId"] == "ami-0772db4c976d21e9b"
+    assert params["InstanceType"] == "t2.micro"
+    assert params["MinCount"] == 1
+    assert params["MaxCount"] == 1
+    assert params["SubnetId"] == "test"
+    assert params["SecurityGroupIds"] == ["test"]
+    assert params["IamInstanceProfile"] == {"Name": "test"}
+    assert params["InstanceInitiatedShutdownBehavior"] == "terminate"
+    assert "UserData" in params
+    assert params["TagSpecifications"] == [
+        {
+            "ResourceType": "instance",
+            "Tags": [
+                {"Key": "Name", "Value": "test"},
+                {"Key": "Owner", "Value": "test"},
+                {"Key": "repository", "Value": "Open-Athena/ec2-gha"},
+                {"Key": "workflow", "Value": "CI"},
+                {"Key": "gha_url", "Value": "https://github.com/Open-Athena/ec2-gha/actions/runs/16725250800"},
+            ],
+        }
+    ]
+
 
 def test_modify_root_disk_size(complete_params):
     mock_client = Mock()
@@ -183,6 +269,7 @@ def test_modify_root_disk_size(complete_params):
     }
     assert out == expected_output
 
+
 def test_modify_root_disk_size_permission_error(complete_params):
     mock_client = Mock()
 
@@ -198,6 +285,7 @@ def test_modify_root_disk_size_permission_error(complete_params):
         aws._modify_root_disk_size(mock_client, {})
 
     assert 'AccessDenied' in str(exc_info.value)
+
 
 def test_modify_root_disk_size_no_change(complete_params):
     mock_client = Mock()
@@ -238,6 +326,7 @@ def test_modify_root_disk_size_no_change(complete_params):
 
     # With root_device_size = 0, no modifications should be made
     assert result == input_params
+
 
 def test_create_instance_with_labels(aws):
     aws.labels = "test"
@@ -337,7 +426,19 @@ def test_set_instance_mapping(aws, monkeypatch):
     with patch("builtins.open", mock_file):
         aws.set_instance_mapping(mapping)
 
-    assert mock_file.call_args_list == [
-        call("mock_output_file", "a"),
-        call("mock_output_file", "a"),
-    ]
+    # Should be called 4 times for single instance (mapping, instances, instance-id, label)
+    assert mock_file.call_count == 4
+    assert all(call[0][0] == "mock_output_file" for call in mock_file.call_args_list)
+
+
+def test_set_instance_mapping_multiple(aws, monkeypatch):
+    monkeypatch.setenv("GITHUB_OUTPUT", "mock_output_file")
+    mapping = {"i-xxxxxxxxxxxxxxxxx": "test1", "i-yyyyyyyyyyyyyyyyy": "test2"}
+    mock_file = mock_open()
+
+    with patch("builtins.open", mock_file):
+        aws.set_instance_mapping(mapping)
+
+    # Should be called 2 times for multiple instances (mapping, instances only)
+    assert mock_file.call_count == 2
+    assert all(call[0][0] == "mock_output_file" for call in mock_file.call_args_list)

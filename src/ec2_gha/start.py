@@ -1,5 +1,6 @@
 import importlib.resources
 from dataclasses import dataclass, field
+from os import environ
 from string import Template
 import json
 
@@ -17,55 +18,70 @@ class StartAWS(CreateCloudInstance):
 
     Parameters
     ----------
+    home_dir : str
+        The home directory of the user.
     image_id : str
         The ID of the AMI to use.
     instance_type : str
         The type of instance to use.
-    home_dir : str
-        The home directory of the user.
-    repo : str
-        The repository to use.
     region_name : str
         The name of the region to use.
-    tags : list[dict[str, str]]
-        A list of tags to apply to the instance. Defaults to an empty list.
+    repo : str
+        The repository to use.
+    cloudwatch_logs_group : str
+        CloudWatch Logs group name for streaming runner logs. Defaults to an empty string.
     gh_runner_tokens : list[str]
         A list of GitHub runner tokens. Defaults to an empty list.
-    root_device_size : int
-        The size of the root device. Defaults to 0 which uses the default.
-    labels : str
-        A comma-separated list of labels to apply to the runner. Defaults to an empty string.
-    subnet_id : str
-        The ID of the subnet to use. Defaults to an empty string.
-    security_group_id : str
-        The ID of the security group to use. Defaults to an empty string.
-    iam_role : str
+    iam_instance_profile : str
         The name of the IAM role to use. Defaults to an empty string.
-    script : str
-        The script to run on the instance. Defaults to an empty string.
-    userdata : str
-        Custom user data script to prepend to the runner setup. Defaults to an empty string.
     key_name : str
         The name of the EC2 key pair to use for SSH access. Defaults to an empty string.
+    labels : str
+        A comma-separated list of labels to apply to the runner. Defaults to an empty string.
+    max_instance_lifetime : str
+        Maximum instance lifetime in minutes before automatic shutdown. Defaults to "360" (6 hours).
+    root_device_size : int
+        The size of the root device. Defaults to 0 which uses the default.
+    runner_initial_grace_period : str
+        Grace period in seconds before terminating if no jobs have started. Defaults to "180".
+    runner_grace_period : str
+        Grace period in seconds before terminating instance after last job completes. Defaults to "120".
+    script : str
+        The script to run on the instance. Defaults to an empty string.
+    security_group_id : str
+        The ID of the security group to use. Defaults to an empty string.
+    ssh_pubkey : str
+        SSH public key to add to authorized_keys. Defaults to an empty string.
+    subnet_id : str
+        The ID of the subnet to use. Defaults to an empty string.
+    tags : list[dict[str, str]]
+        A list of tags to apply to the instance. Defaults to an empty list.
+    userdata : str
+        Custom user data script to prepend to the runner setup. Defaults to an empty string.
 
     """
 
+    home_dir: str
     image_id: str
     instance_type: str
-    home_dir: str
-    repo: str
     region_name: str
-    runner_release: str = ""
-    tags: list[dict[str, str]] = field(default_factory=list)
+    repo: str
+    cloudwatch_logs_group: str = ""
     gh_runner_tokens: list[str] = field(default_factory=list)
-    root_device_size: int = 0
-    labels: str = ""
-    subnet_id: str = ""
-    security_group_id: str = ""
-    iam_role: str = ""
-    script: str = ""
-    userdata: str = ""
+    iam_instance_profile: str = ""
     key_name: str = ""
+    labels: str = ""
+    max_instance_lifetime: str = "360"
+    root_device_size: int = 0
+    runner_grace_period: str = "120"
+    runner_initial_grace_period: str = "180"
+    runner_release: str = ""
+    script: str = ""
+    security_group_id: str = ""
+    ssh_pubkey: str = ""
+    subnet_id: str = ""
+    tags: list[dict[str, str]] = field(default_factory=list)
+    userdata: str = ""
 
     def _build_aws_params(self, user_data_params: dict) -> dict:
         """Build the parameters for the AWS API call.
@@ -93,12 +109,66 @@ class StartAWS(CreateCloudInstance):
             params["SubnetId"] = self.subnet_id
         if self.security_group_id and self.security_group_id.strip():
             params["SecurityGroupIds"] = [self.security_group_id.strip()]
-        if self.iam_role != "":
-            params["IamInstanceProfile"] = {"Name": self.iam_role}
+        if self.iam_instance_profile != "":
+            params["IamInstanceProfile"] = {"Name": self.iam_instance_profile}
         if self.key_name != "":
             params["KeyName"] = self.key_name
-        if len(self.tags) > 0:
-            specs = {"ResourceType": "instance", "Tags": self.tags}
+        # Add default tags if not already present
+        default_tags = []
+        existing_keys = {tag["Key"] for tag in self.tags}
+        import os
+
+        # Add Name tag if not provided
+        if "Name" not in existing_keys:
+            # Try to create a sensible default Name tag
+            name_parts = []
+
+            # Use repository basename if available
+            if os.environ.get("GITHUB_REPOSITORY"):
+                repo_basename = os.environ["GITHUB_REPOSITORY"].split("/")[-1]
+                name_parts.append(repo_basename)
+
+            # Add workflow name if available
+            if os.environ.get("GITHUB_WORKFLOW"):
+                # Try to extract just the filename without extension from workflow ref
+                workflow_ref = os.environ.get("GITHUB_WORKFLOW_REF", "")
+                if workflow_ref:
+                    # Extract filename from path like "owner/repo/.github/workflows/test.yml@ref"
+                    import re
+                    match = re.search(r'/([^/@]+)\.(yml|yaml)@', workflow_ref)
+                    if match:
+                        name_parts.append(match.group(1))
+                    else:
+                        name_parts.append(os.environ["GITHUB_WORKFLOW"])
+                else:
+                    name_parts.append(os.environ["GITHUB_WORKFLOW"])
+
+            # Add run number if available
+            if os.environ.get("GITHUB_RUN_NUMBER"):
+                name_parts.append(f"#{os.environ['GITHUB_RUN_NUMBER']}")
+
+            # Create Name tag if we have any parts
+            if name_parts:
+                default_tags.append({"Key": "Name", "Value": "/".join(name_parts)})
+
+        # Add repository tag if available
+        if "repository" not in existing_keys and os.environ.get("GITHUB_REPOSITORY"):
+            default_tags.append({"Key": "repository", "Value": os.environ["GITHUB_REPOSITORY"]})
+
+        # Add workflow tag if available
+        if "workflow" not in existing_keys and os.environ.get("GITHUB_WORKFLOW"):
+            default_tags.append({"Key": "workflow", "Value": os.environ["GITHUB_WORKFLOW"]})
+
+        # Add run URL tag if available
+        if "gha_url" not in existing_keys and os.environ.get("GITHUB_SERVER_URL") and os.environ.get("GITHUB_REPOSITORY") and os.environ.get("GITHUB_RUN_ID"):
+            gha_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+            default_tags.append({"Key": "gha_url", "Value": gha_url})
+
+        # Combine user tags with default tags
+        all_tags = self.tags + default_tags
+
+        if len(all_tags) > 0:
+            specs = {"ResourceType": "instance", "Tags": all_tags}
             params["TagSpecifications"] = [specs]
 
         return params
@@ -117,9 +187,7 @@ class StartAWS(CreateCloudInstance):
             The user data script as a string.
 
         """
-        template = importlib.resources.files("start_aws_gha_runner").joinpath(
-            "templates/user-script.sh.templ"
-        )
+        template = importlib.resources.files("ec2_gha").joinpath("templates/user-script.sh.templ")
         with template.open() as f:
             template_content = f.read()
 
@@ -131,7 +199,7 @@ class StartAWS(CreateCloudInstance):
             raise Exception("Error parsing user data template") from e
 
     def _modify_root_disk_size(self, client, params: dict) -> dict:
-        """ Modify the root disk size of the instance.
+        """Modify the root disk size of the instance.
 
         Parameters
         ----------
@@ -179,43 +247,39 @@ class StartAWS(CreateCloudInstance):
             A dictionary of instance IDs and labels.
         """
         if not self.gh_runner_tokens:
-            raise ValueError(
-                "No GitHub runner tokens provided, cannot create instances."
-            )
+            raise ValueError("No GitHub runner tokens provided, cannot create instances.")
         if not self.runner_release:
-            raise ValueError(
-                "No runner release provided, cannot create instances."
-            )
+            raise ValueError("No runner release provided, cannot create instances.")
         if not self.home_dir:
-            raise ValueError(
-                "No home directory provided, cannot create instances."
-            )
+            raise ValueError("No home directory provided, cannot create instances.")
         if not self.image_id:
             raise ValueError("No image ID provided, cannot create instances.")
         if not self.instance_type:
-            raise ValueError(
-                "No instance type provided, cannot create instances."
-            )
+            raise ValueError("No instance type provided, cannot create instances.")
         if not self.region_name:
-            raise ValueError(
-                "No region name provided, cannot create instances."
-            )
+            raise ValueError("No region name provided, cannot create instances.")
         ec2 = boto3.client("ec2", region_name=self.region_name)
         id_dict = {}
         for token in self.gh_runner_tokens:
             label = gh.GitHubInstance.generate_random_label()
-            labels = self.labels
-            if labels == "":
-                labels = label
-            else:
-                labels = self.labels + "," + label
+            # Combine user labels with the generated runner label
+            labels = f"{self.labels},{label}" if self.labels else label
+
             user_data_params = {
-                "token": token,
-                "repo": self.repo,
+                "cloudwatch_logs_group": self.cloudwatch_logs_group,
+                "github_workflow": environ.get("GITHUB_WORKFLOW", ""),
+                "github_run_id": environ.get("GITHUB_RUN_ID", ""),
+                "github_run_number": environ.get("GITHUB_RUN_NUMBER", ""),
                 "homedir": self.home_dir,
-                "script": self.script,
-                "runner_release": self.runner_release,
                 "labels": labels,
+                "max_instance_lifetime": self.max_instance_lifetime,
+                "repo": self.repo,
+                "runner_grace_period": self.runner_grace_period,
+                "runner_initial_grace_period": self.runner_initial_grace_period,
+                "runner_release": self.runner_release,
+                "script": self.script,
+                "ssh_pubkey": self.ssh_pubkey,
+                "token": token,
                 "userdata": self.userdata,
             }
             params = self._build_aws_params(user_data_params)
