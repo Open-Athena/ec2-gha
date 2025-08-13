@@ -131,41 +131,51 @@ class StartAWS(CreateCloudInstance):
                 repo_basename = os.environ["GITHUB_REPOSITORY"].split("/")[-1]
                 name_parts.append(repo_basename)
 
-            # Add workflow name if available
-            if os.environ.get("GITHUB_WORKFLOW"):
-                # Try to extract just the filename without extension from workflow ref
-                workflow_ref = os.environ.get("GITHUB_WORKFLOW_REF", "")
-                if workflow_ref:
-                    # Extract filename from path like "owner/repo/.github/workflows/test.yml@ref"
-                    import re
-                    match = re.search(r'/([^/@]+)\.(yml|yaml)@', workflow_ref)
-                    if match:
-                        name_parts.append(match.group(1))
-                    else:
-                        name_parts.append(os.environ["GITHUB_WORKFLOW"])
+            # Extract the workflow filename (sans extension) and ref
+            workflow_ref = os.environ.get("GITHUB_WORKFLOW_REF", "")
+            if workflow_ref:
+                # Extract filename from path like "owner/repo/.github/workflows/test.yml@ref"
+                import re
+                m = re.search(r'/(?P<name>[^/@]+)\.(yml|yaml)@(?P<ref>[^@]+)$', workflow_ref)
+                if m:
+                    # Clean up the ref - remove "refs/heads/" prefix if present
+                    ref = m['ref']
+                    if ref.startswith('refs/heads/'):
+                        ref = ref[11:]  # Remove "refs/heads/" prefix
+                    elif ref.startswith('refs/tags/'):
+                        ref = ref[10:]  # Remove "refs/tags/" prefix
+                    name_parts.append(f"{m['name']}@{ref}")
                 else:
-                    name_parts.append(os.environ["GITHUB_WORKFLOW"])
+                    name_parts.append("???")
+            else:
+                name_parts.append("???")
 
             # Add run number if available
             if os.environ.get("GITHUB_RUN_NUMBER"):
-                name_parts.append(f"#{os.environ['GITHUB_RUN_NUMBER']}")
-
-            # Create Name tag if we have any parts
-            if name_parts:
+                # The # acts as separator, don't add a slash before it
+                run_number = f"#{os.environ['GITHUB_RUN_NUMBER']}"
+                # Join existing parts with "/" then append run number directly
+                if name_parts:
+                    name_value = "/".join(name_parts) + run_number
+                else:
+                    name_value = run_number
+                default_tags.append({"Key": "Name", "Value": name_value})
+            elif name_parts:
+                # No run number, just join the parts
                 default_tags.append({"Key": "Name", "Value": "/".join(name_parts)})
 
         # Add repository tag if available
-        if "repository" not in existing_keys and os.environ.get("GITHUB_REPOSITORY"):
-            default_tags.append({"Key": "repository", "Value": os.environ["GITHUB_REPOSITORY"]})
+        if "Repository" not in existing_keys and os.environ.get("GITHUB_REPOSITORY"):
+            default_tags.append({"Key": "Repository", "Value": os.environ["GITHUB_REPOSITORY"]})
 
         # Add workflow tag if available
-        if "workflow" not in existing_keys and os.environ.get("GITHUB_WORKFLOW"):
-            default_tags.append({"Key": "workflow", "Value": os.environ["GITHUB_WORKFLOW"]})
+        if "Workflow" not in existing_keys and os.environ.get("GITHUB_WORKFLOW"):
+            default_tags.append({"Key": "Workflow", "Value": os.environ["GITHUB_WORKFLOW"]})
 
         # Add run URL tag if available
-        if "gha_url" not in existing_keys and os.environ.get("GITHUB_SERVER_URL") and os.environ.get("GITHUB_REPOSITORY") and os.environ.get("GITHUB_RUN_ID"):
+        if "URL" not in existing_keys and os.environ.get("GITHUB_SERVER_URL") and os.environ.get("GITHUB_REPOSITORY") and os.environ.get("GITHUB_RUN_ID"):
             gha_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
-            default_tags.append({"Key": "gha_url", "Value": gha_url})
+            default_tags.append({"Key": "URL", "Value": gha_url})
 
         # Combine user tags with default tags
         all_tags = self.tags + default_tags
