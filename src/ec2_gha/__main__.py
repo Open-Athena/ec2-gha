@@ -35,6 +35,7 @@ def main():
         .update_state("INPUT_MAX_INSTANCE_LIFETIME", "max_instance_lifetime")
         .update_state("INPUT_RUNNER_GRACE_PERIOD", "runner_grace_period")
         .update_state("INPUT_RUNNER_INITIAL_GRACE_PERIOD", "runner_initial_grace_period")
+        .update_state("INPUT_RUNNER_POLL_INTERVAL", "runner_poll_interval")
         .update_state("INPUT_SSH_PUBKEY", "ssh_pubkey")
         .update_state("AWS_REGION", "region_name")        # default
         .update_state("INPUT_AWS_REGION", "region_name")  # input override

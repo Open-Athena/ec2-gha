@@ -266,6 +266,8 @@ echo "ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/job-started-hook.sh" > .env
 echo "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/job-completed-hook.sh" >> .env
 echo "RUNNER_HOME=$homedir" >> .env
 echo "RUNNER_GRACE_PERIOD=$runner_grace_period" >> .env
+echo "RUNNER_INITIAL_GRACE_PERIOD=$runner_initial_grace_period" >> .env
+echo "RUNNER_POLL_INTERVAL=$runner_poll_interval" >> .env
 
 # Set up job tracking directory
 mkdir -p /var/run/github-runner-jobs
@@ -284,14 +286,14 @@ Type=oneshot
 ExecStart=/usr/local/bin/check-runner-termination.sh
 EOF
 
-cat > /etc/systemd/system/runner-termination-check.timer << 'EOF'
+cat > /etc/systemd/system/runner-termination-check.timer << EOF
 [Unit]
 Description=Periodic GitHub runner termination check
 Requires=runner-termination-check.service
 
 [Timer]
 OnBootSec=60s
-OnUnitActiveSec=30s
+OnUnitActiveSec=${runner_poll_interval}s
 
 [Install]
 WantedBy=timers.target
