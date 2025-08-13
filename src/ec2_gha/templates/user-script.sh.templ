@@ -172,7 +172,7 @@ exec >> /tmp/termination-check.log 2>&1
 echo "[$$(date)] Checking termination conditions"
 
 ACTIVITY_FILE="/var/run/github-runner-last-activity"
-GRACE_PERIOD="$${RUNNER_GRACE_PERIOD:-120}"
+GRACE_PERIOD="$${RUNNER_GRACE_PERIOD:-60}"
 INITIAL_GRACE_PERIOD="$${RUNNER_INITIAL_GRACE_PERIOD:-180}"
 JOB_TRACK_DIR="/var/run/github-runner-jobs"
 
