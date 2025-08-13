@@ -83,10 +83,10 @@ on:
         required: false
         type: string
       runner_grace_period:
-        description: "Grace period in seconds before terminating instance after last job completes (default 120)"
+        description: "Grace period in seconds before terminating instance after last job completes (default 60)"
         required: false
         type: string
-        default: "120"
+        default: "60"
       runner_initial_grace_period:
         description: "Grace period in seconds before terminating instance if no jobs start (default 180)"
         required: false

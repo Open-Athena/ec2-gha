@@ -45,7 +45,7 @@ class StartAWS(CreateCloudInstance):
     runner_initial_grace_period : str
         Grace period in seconds before terminating if no jobs have started. Defaults to "180".
     runner_grace_period : str
-        Grace period in seconds before terminating instance after last job completes. Defaults to "120".
+        Grace period in seconds before terminating instance after last job completes. Defaults to "60".
     script : str
         The script to run on the instance. Defaults to an empty string.
     security_group_id : str
@@ -73,7 +73,7 @@ class StartAWS(CreateCloudInstance):
     labels: str = ""
     max_instance_lifetime: str = "360"
     root_device_size: int = 0
-    runner_grace_period: str = "120"
+    runner_grace_period: str = "60"
     runner_initial_grace_period: str = "180"
     runner_release: str = ""
     script: str = ""

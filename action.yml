@@ -55,13 +55,13 @@ inputs:
     description: "The repo to run against. Will use the current repo if not specified."
     required: false
   runner_grace_period:
-    description: "Grace period in seconds before terminating instance after last job completes (default 30)"
+    description: "Grace period in seconds before terminating instance after last job completes (default 60)"
     required: false
-    default: "30"
+    default: "60"
   runner_initial_grace_period:
-    description: "Grace period in seconds before terminating instance if no jobs start (default 120)"
+    description: "Grace period in seconds before terminating instance if no jobs start (default 180)"
     required: false
-    default: "120"
+    default: "180"
   runner_registration_timeout:
     description: "Maximum seconds to wait for runner to register with GitHub (default 300 = 5 minutes)"
     required: false

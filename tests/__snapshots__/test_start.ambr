@@ -175,7 +175,7 @@
   echo "[$(date)] Checking termination conditions"
   
   ACTIVITY_FILE="/var/run/github-runner-last-activity"
-  GRACE_PERIOD="${RUNNER_GRACE_PERIOD:-120}"
+  GRACE_PERIOD="${RUNNER_GRACE_PERIOD:-60}"
   INITIAL_GRACE_PERIOD="${RUNNER_INITIAL_GRACE_PERIOD:-180}"
   JOB_TRACK_DIR="/var/run/github-runner-jobs"
   
@@ -531,7 +531,7 @@
   echo "[$(date)] Checking termination conditions"
   
   ACTIVITY_FILE="/var/run/github-runner-last-activity"
-  GRACE_PERIOD="${RUNNER_GRACE_PERIOD:-120}"
+  GRACE_PERIOD="${RUNNER_GRACE_PERIOD:-60}"
   INITIAL_GRACE_PERIOD="${RUNNER_INITIAL_GRACE_PERIOD:-180}"
   JOB_TRACK_DIR="/var/run/github-runner-jobs"
   
@@ -624,7 +624,7 @@
   echo "ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/job-started-hook.sh" > .env
   echo "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/job-completed-hook.sh" >> .env
   echo "RUNNER_HOME=/home/test-user" >> .env
-  echo "RUNNER_GRACE_PERIOD=30" >> .env
+  echo "RUNNER_GRACE_PERIOD=60" >> .env
   
   # Set up job tracking directory
   mkdir -p /var/run/github-runner-jobs
