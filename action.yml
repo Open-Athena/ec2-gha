@@ -40,10 +40,6 @@ inputs:
   extra_gh_labels:
     description: "Any extra GitHub labels to tag your runners with. Passed as a comma-separated list with no spaces."
     required: false
-  gh_timeout:
-    description: "The timeout in seconds to wait for the runner to come online as seen by the GitHub API. Defaults to 1200 seconds."
-    required: true
-    default: "1200"
   instance_count:
     description: "The number of instances to create, defaults to 1"
     required: true
@@ -51,6 +47,22 @@ inputs:
   repo:
     description: "The repo to run against. Will use the current repo if not specified."
     required: false
+  runner_grace_period:
+    description: "Grace period in seconds before terminating instance after last job completes (default 60)"
+    required: false
+    default: "60"
+  runner_initial_grace_period:
+    description: "Grace period in seconds before terminating instance if no jobs start (default 180)"
+    required: false
+    default: "180"
+  runner_poll_interval:
+    description: "How often (in seconds) to check termination conditions (default 10)"
+    required: false
+    default: "10"
+  runner_registration_timeout:
+    description: "Maximum seconds to wait for runner to register with GitHub (default 300 = 5 minutes)"
+    required: false
+    default: "300"
 outputs:
   mapping:
     description: "A JSON object mapping instance IDs to unique GitHub runner labels. This is used in conjunction with the `instance_mapping` input when stopping."

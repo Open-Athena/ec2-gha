@@ -17,6 +17,7 @@ def aws():
             "instance_type": "t2.micro",
             "region_name": "us-east-1",
             "repo": "omsf-eco-infra/awsinfratesting",
+            "runner_grace_period": "120",
             "runner_release": "testing",
         }
         yield StartAWS(**params)
@@ -25,13 +26,19 @@ def aws():
 def test_build_user_data(aws, snapshot):
     """Test that template parameters are correctly substituted using snapshot testing"""
     params = {
-        "homedir": "/home/ec2-user",
-        "labels": "label",
-        "repo": "omsf-eco-infra/awsinfratesting",
-        "runner_release": "test.tar.gz",
-        "script": "echo 'Hello, World!'",
-        "token": "test",
-        "userdata": "",
+        "github_run_id": "123456789",
+        "github_run_number": "42",
+        "github_workflow": "test-workflow",
+        "homedir": "/home/test-user",
+        "labels": "test-label",
+        "repo": "test-org/test-repo",
+        "runner_grace_period": "61",
+        "runner_initial_grace_period": "181",
+        "runner_poll_interval": "11",
+        "runner_release": "https://example.com/runner.tar.gz",
+        "script": "echo 'test script'",
+        "token": "test-token-xyz",
+        "userdata": "echo 'custom userdata'",
     }
     user_data = aws._build_user_data(**params)
 
@@ -65,6 +72,7 @@ def complete_params():
         "iam_instance_profile": "test",
         "image_id": "ami-0772db4c976d21e9b",
         "instance_type": "t2.micro",
+        "labels": "",
         "region_name": "us-east-1",
         "repo": "omsf-eco-infra/awsinfratesting",
         "root_device_size": 100,
@@ -75,7 +83,6 @@ def complete_params():
             {"Key": "Name", "Value": "test"},
             {"Key": "Owner", "Value": "test"},
         ],
-        "labels": "",
     }
     yield params
 
@@ -88,9 +95,15 @@ def complete_params():
 })
 def test_build_aws_params(complete_params):
     user_data_params = {
+        "github_run_id": "16725250800",
+        "github_run_number": "1",
+        "github_workflow": "CI",
         "homedir": "/home/ec2-user",
         "labels": "label",
         "repo": "omsf-eco-infra/awsinfratesting",
+        "runner_grace_period": "61",
+        "runner_initial_grace_period": "181",
+        "runner_poll_interval": "11",
         "runner_release": "test.tar.gz",
         "script": "echo 'Hello, World!'",
         "token": "test",

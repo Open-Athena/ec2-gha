@@ -1,0 +1,150 @@
+name: EC2 Runner
+#
+# Environment variables (can be set at org/repo level):
+#   EC2_LAUNCH_ROLE - AWS role ARN for EC2 operations (required if not passed as input)
+#   EC2_INSTANCE_PROFILE - IAM instance profile name for EC2 instances
+#   EC2_IMAGE_ID - Default AMI ID
+#   EC2_INSTANCE_TYPE - Default instance type
+#   EC2_HOME_DIR - Default home directory
+#   EC2_KEY_NAME - Default SSH key pair name
+#   EC2_SECURITY_GROUP_ID - Default security group ID
+#
+# Priority: inputs > vars > defaults
+
+on:
+  workflow_call:
+    secrets:
+      GH_SA_TOKEN:
+        description: "GitHub token with permissions to manage self-hosted runners"
+        required: true
+    inputs:
+      action_ref:
+        description: "ec2-gha Git ref (branch/tag/SHA) to checkout"
+        required: false
+        type: string
+        default: "v2"
+      aws_region:
+        description: "AWS region for EC2 instances (defaults to us-east-1)"
+        required: false
+        type: string
+        default: "us-east-1"
+      aws_tags:
+        description: "AWS tags to apply to EC2 instances (JSON array format)"
+        required: false
+        type: string
+      ec2_launch_role:
+        description: "AWS role ARN to assume for EC2 operations (falls back to vars.EC2_LAUNCH_ROLE; one or the other is required)"
+        required: false
+        type: string
+      ec2_image_id:
+        description: "AWS AMI ID to use (falls back to vars.EC2_IMAGE_ID)"
+        required: false
+        type: string
+        default: "ami-00096836009b16a22" # Deep Learning OSS Nvidia Driver AMI GPU PyTorch
+      ec2_instance_type:
+        description: "AWS instance type (falls back to vars.EC2_INSTANCE_TYPE)"
+        required: false
+        type: string
+        default: "g4dn.xlarge"
+      ec2_instance_profile:
+        description: "Instance profile name to attach to launched EC2 instance"
+        required: false
+        type: string
+      ec2_home_dir:
+        description: "Home directory on the AWS instance (falls back to vars.EC2_HOME_DIR)"
+        required: false
+        type: string
+        default: "/home/ubuntu"
+      ec2_key_name:
+        description: "Name of an EC2 key pair to use for SSH access (falls back to vars.EC2_KEY_NAME)"
+        required: false
+        type: string
+      ec2_root_device_size:
+        description: "Root device size in GB (0 = use AMI default)"
+        required: false
+        type: string
+        default: "0"
+      ec2_security_group_id:
+        description: "AWS security group ID (falls back to vars.EC2_SECURITY_GROUP_ID)"
+        required: false
+        type: string
+      ec2_userdata:
+        description: "Additional userdata script to run on instance startup (before runner starts)"
+        required: false
+        type: string
+      runner_grace_period:
+        description: "Grace period in seconds before terminating instance after last job completes (default 60)"
+        required: false
+        type: string
+        default: "60"
+      runner_initial_grace_period:
+        description: "Grace period in seconds before terminating instance if no jobs start (default 180)"
+        required: false
+        type: string
+        default: "180"
+      runner_poll_interval:
+        description: "How often (in seconds) to check termination conditions (default 10)"
+        required: false
+        type: string
+        default: "10"
+      runner_registration_timeout:
+        description: "Maximum seconds to wait for runner to register with GitHub (default 300 = 5 minutes)"
+        required: false
+        type: string
+        default: "300"
+    outputs:
+      id:
+        description: "Instance ID for runs-on"
+        value: ${{ jobs.launch.outputs.id }}
+
+permissions:
+  id-token: write # Required for AWS OIDC
+
+jobs:
+  launch:
+    name: Launch ${{ inputs.ec2_instance_type || vars.EC2_INSTANCE_TYPE }}
+    runs-on: ubuntu-latest
+    outputs:
+      id: ${{ steps.aws-start.outputs.label }}
+    steps:
+      - name: Check EC2_LAUNCH_ROLE configuration
+        run: |
+          if [ -z "${{ inputs.ec2_launch_role || vars.EC2_LAUNCH_ROLE }}" ]; then
+            echo "ERROR: EC2_LAUNCH_ROLE must be provided either as an input or as a repository/organization variable"
+            echo "Please set 'ec2_launch_role' input or 'EC2_LAUNCH_ROLE' variable"
+            exit 1
+          fi
+
+      - name: Checkout ec2-gha repository
+        uses: actions/checkout@v4
+        with:
+          repository: Open-Athena/ec2-gha
+          ref: ${{ inputs.action_ref }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.ec2_launch_role || vars.EC2_LAUNCH_ROLE }}
+          role-session-name: github-actions-session
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Create cloud runner
+        id: aws-start
+        uses: ./
+        with:
+          aws_region: ${{ inputs.aws_region }}
+          aws_tags: ${{ inputs.aws_tags }}
+          ec2_image_id: ${{ inputs.ec2_image_id || vars.EC2_IMAGE_ID }}
+          ec2_instance_type: ${{ inputs.ec2_instance_type || vars.EC2_INSTANCE_TYPE }}
+          ec2_instance_profile: ${{ inputs.ec2_instance_profile || vars.EC2_INSTANCE_PROFILE }}
+          ec2_home_dir: ${{ inputs.ec2_home_dir || vars.EC2_HOME_DIR }}
+          ec2_key_name: ${{ inputs.ec2_key_name || vars.EC2_KEY_NAME }}
+          ec2_root_device_size: ${{ inputs.ec2_root_device_size }}
+          ec2_security_group_id: ${{ inputs.ec2_security_group_id || vars.EC2_SECURITY_GROUP_ID }}
+          ec2_userdata: ${{ inputs.ec2_userdata }}
+          runner_initial_grace_period: ${{ inputs.runner_initial_grace_period }}
+          runner_grace_period: ${{ inputs.runner_grace_period }}
+          runner_poll_interval: ${{ inputs.runner_poll_interval }}
+          runner_registration_timeout: ${{ inputs.runner_registration_timeout }}
+        env:
+          GH_PAT: ${{ secrets.GH_SA_TOKEN }}

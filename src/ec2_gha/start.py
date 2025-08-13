@@ -165,15 +165,15 @@ class StartAWS(CreateCloudInstance):
                 default_tags.append({"Key": "Name", "Value": "/".join(name_parts)})
 
         # Add repository tag if available
-        if "repository" not in existing_keys and os.environ.get("GITHUB_REPOSITORY"):
+        if "Repository" not in existing_keys and os.environ.get("GITHUB_REPOSITORY"):
             default_tags.append({"Key": "Repository", "Value": os.environ["GITHUB_REPOSITORY"]})
 
         # Add workflow tag if available
-        if "workflow" not in existing_keys and os.environ.get("GITHUB_WORKFLOW"):
+        if "Workflow" not in existing_keys and os.environ.get("GITHUB_WORKFLOW"):
             default_tags.append({"Key": "Workflow", "Value": os.environ["GITHUB_WORKFLOW"]})
 
         # Add run URL tag if available
-        if "gha_url" not in existing_keys and os.environ.get("GITHUB_SERVER_URL") and os.environ.get("GITHUB_REPOSITORY") and os.environ.get("GITHUB_RUN_ID"):
+        if "URL" not in existing_keys and os.environ.get("GITHUB_SERVER_URL") and os.environ.get("GITHUB_REPOSITORY") and os.environ.get("GITHUB_RUN_ID"):
             gha_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
             default_tags.append({"Key": "URL", "Value": gha_url})
 
@@ -279,20 +279,17 @@ class StartAWS(CreateCloudInstance):
             labels = f"{self.labels},{label}" if self.labels else label
 
             user_data_params = {
-                "cloudwatch_logs_group": self.cloudwatch_logs_group,
                 "github_workflow": environ.get("GITHUB_WORKFLOW", ""),
                 "github_run_id": environ.get("GITHUB_RUN_ID", ""),
                 "github_run_number": environ.get("GITHUB_RUN_NUMBER", ""),
                 "homedir": self.home_dir,
                 "labels": labels,
-                "max_instance_lifetime": self.max_instance_lifetime,
                 "repo": self.repo,
                 "runner_grace_period": self.runner_grace_period,
                 "runner_initial_grace_period": self.runner_initial_grace_period,
                 "runner_poll_interval": self.runner_poll_interval,
                 "runner_release": self.runner_release,
                 "script": self.script,
-                "ssh_pubkey": self.ssh_pubkey,
                 "token": token,
                 "userdata": self.userdata,
             }
