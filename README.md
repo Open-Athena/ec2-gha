@@ -254,9 +254,9 @@ Once connected to the instance:
 
 The action automatically adds these tags to EC2 instances (unless already provided):
 - `Name`: Auto-generated from repository/workflow/run-number (e.g., "my-repo/test-workflow/#123")
-- `repository`: GitHub repository full name
-- `workflow`: Workflow name
-- `gha_url`: Direct link to the GitHub Actions run
+- `Repository`: GitHub repository full name
+- `Workflow`: Workflow name
+- `URL`: Direct link to the GitHub Actions run
 
 These help with debugging and cost tracking. You can override any of these by providing your own tags with the same keys.
 

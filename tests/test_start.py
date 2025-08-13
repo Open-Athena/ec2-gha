@@ -166,9 +166,9 @@ def test_build_aws_params(complete_params):
             "Tags": [
                 {"Key": "Name", "Value": "test"},
                 {"Key": "Owner", "Value": "test"},
-                {"Key": "repository", "Value": "Open-Athena/ec2-gha"},
-                {"Key": "workflow", "Value": "CI"},
-                {"Key": "gha_url", "Value": "https://github.com/Open-Athena/ec2-gha/actions/runs/16725250800"},
+                {"Key": "Repository", "Value": "Open-Athena/ec2-gha"},
+                {"Key": "Workflow", "Value": "CI"},
+                {"Key": "URL", "Value": "https://github.com/Open-Athena/ec2-gha/actions/runs/16725250800"},
             ],
         }
     ]
