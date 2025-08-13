@@ -80,6 +80,11 @@ on:
         required: false
         type: string
         default: "1"
+      instance_name:
+        description: "Name tag template for EC2 instances. Uses Python string.Template format with variables: $repo, $name (workflow filename stem), $workflow (full workflow name), $ref, $run_number"
+        required: false
+        type: string
+        default: "$repo/$name#$run_number"
       max_instance_lifetime:
         description: "Maximum instance lifetime in minutes before automatic shutdown (falls back to vars.MAX_INSTANCE_LIFETIME, then 360 = 6 hours)"
         required: false
@@ -164,6 +169,7 @@ jobs:
           ec2_security_group_id: ${{ inputs.ec2_security_group_id || vars.EC2_SECURITY_GROUP_ID }}
           ec2_userdata: ${{ inputs.ec2_userdata }}
           instance_count: ${{ inputs.instance_count }}
+          instance_name: ${{ inputs.instance_name }}
           max_instance_lifetime: ${{ inputs.max_instance_lifetime || vars.MAX_INSTANCE_LIFETIME }}
           runner_grace_period: ${{ inputs.runner_grace_period || vars.RUNNER_GRACE_PERIOD }}
           runner_initial_grace_period: ${{ inputs.runner_initial_grace_period || vars.RUNNER_INITIAL_GRACE_PERIOD }}

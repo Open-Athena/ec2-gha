@@ -2,6 +2,7 @@ from ec2_gha.start import StartAWS
 from ec2_gha.defaults import (
     EC2_INSTANCE_TYPE,
     INSTANCE_COUNT,
+    INSTANCE_NAME,
     MAX_INSTANCE_LIFETIME,
     RUNNER_GRACE_PERIOD,
     RUNNER_INITIAL_GRACE_PERIOD,
@@ -42,6 +43,7 @@ def main():
         .update_state("INPUT_EC2_USERDATA", "userdata")
         .update_state("INPUT_EXTRA_GH_LABELS", "labels")
         .update_state("INPUT_INSTANCE_COUNT", "instance_count", type_hint=int)
+        .update_state("INPUT_INSTANCE_NAME", "instance_name")
         .update_state("INPUT_MAX_INSTANCE_LIFETIME", "max_instance_lifetime")
         .update_state("INPUT_RUNNER_GRACE_PERIOD", "runner_grace_period")
         .update_state("INPUT_RUNNER_INITIAL_GRACE_PERIOD", "runner_initial_grace_period")
@@ -67,6 +69,7 @@ def main():
     params.setdefault("runner_grace_period", RUNNER_GRACE_PERIOD)
     params.setdefault("runner_initial_grace_period", RUNNER_INITIAL_GRACE_PERIOD)
     params.setdefault("runner_poll_interval", RUNNER_POLL_INTERVAL)
+    params.setdefault("instance_name", INSTANCE_NAME)
     params.setdefault("instance_type", EC2_INSTANCE_TYPE)
     params.setdefault("region_name", "us-east-1")  # Default AWS region
 

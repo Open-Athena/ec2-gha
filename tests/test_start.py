@@ -125,6 +125,8 @@ def test_build_aws_params_with_idx(complete_params, aws_params_user_data, github
         # Remove existing tags to test auto-generated Name tag
         params_without_tags = complete_params.copy()
         params_without_tags['tags'] = []
+        # Add instance_name template for testing
+        params_without_tags['instance_name'] = '$repo/$name-$idx#$run_number'
         aws = StartAWS(**params_without_tags)
 
         params = aws._build_aws_params(user_data_params, idx=0)

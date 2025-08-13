@@ -506,7 +506,7 @@
         'Tags': list([
           dict({
             'Key': 'Name',
-            'Value': 'ec2-gha/test@main#42',
+            'Value': 'ec2-gha/test-0#42',
           }),
           dict({
             'Key': 'Repository',
