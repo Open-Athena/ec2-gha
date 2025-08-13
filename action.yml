@@ -47,6 +47,10 @@ inputs:
     description: "The number of instances to create, defaults to 1"
     required: true
     default: "1"
+  instance_name:
+    description: "Name tag template for EC2 instances. Uses Python string.Template format with variables: $repo, $name (workflow filename stem), $workflow (full workflow name), $ref, $run_number"
+    required: false
+    default: "$repo/$name#$run_number"
   max_instance_lifetime:
     description: "Maximum instance lifetime in minutes before automatic shutdown (default 360 = 6 hours)"
     required: false

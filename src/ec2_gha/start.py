@@ -71,6 +71,7 @@ class StartAWS(CreateCloudInstance):
     cloudwatch_logs_group: str = ""
     gh_runner_tokens: list[str] = field(default_factory=list)
     iam_instance_profile: str = ""
+    instance_name: str = ""
     key_name: str = ""
     labels: str = ""
     max_instance_lifetime: str = "360"
@@ -123,46 +124,51 @@ class StartAWS(CreateCloudInstance):
 
         # Add Name tag if not provided
         if "Name" not in existing_keys:
-            # Try to create a sensible default Name tag
-            name_parts = []
+            # Build template variables
+            template_vars = {}
 
-            # Use repository basename if available
+            # Get repository name (just the basename)
             if os.environ.get("GITHUB_REPOSITORY"):
-                repo_basename = os.environ["GITHUB_REPOSITORY"].split("/")[-1]
-                name_parts.append(repo_basename)
+                template_vars["repo"] = os.environ["GITHUB_REPOSITORY"].split("/")[-1]
+            else:
+                template_vars["repo"] = "unknown"
 
-            # Extract the workflow filename (sans extension) and ref
+            # Get workflow full name (e.g., "Test pip install")
+            template_vars["workflow"] = os.environ.get("GITHUB_WORKFLOW", "unknown")
+
+            # Get workflow filename stem and ref from GITHUB_WORKFLOW_REF
             workflow_ref = os.environ.get("GITHUB_WORKFLOW_REF", "")
             if workflow_ref:
-                # Extract filename from path like "owner/repo/.github/workflows/test.yml@ref"
                 import re
+                # Extract filename and ref from path like "owner/repo/.github/workflows/test.yml@ref"
                 m = re.search(r'/(?P<name>[^/@]+)\.(yml|yaml)@(?P<ref>[^@]+)$', workflow_ref)
                 if m:
-                    # Clean up the ref - remove "refs/heads/" prefix if present
+                    # Get the workflow filename stem (e.g., "install" from "install.yaml")
+                    template_vars["name"] = m['name']
+
+                    # Clean up the ref - remove "refs/heads/" or "refs/tags/" prefix
                     ref = m['ref']
                     if ref.startswith('refs/heads/'):
-                        ref = ref[11:]  # Remove "refs/heads/" prefix
+                        ref = ref[11:]
                     elif ref.startswith('refs/tags/'):
-                        ref = ref[10:]  # Remove "refs/tags/" prefix
-                    name_parts.append(f"{m['name']}@{ref}")
+                        ref = ref[10:]
+                    template_vars["ref"] = ref
                 else:
-                    name_parts.append("???")
+                    template_vars["name"] = "unknown"
+                    template_vars["ref"] = "unknown"
             else:
-                name_parts.append("???")
+                template_vars["name"] = "unknown"
+                template_vars["ref"] = "unknown"
 
-            # Add run number if available
-            if os.environ.get("GITHUB_RUN_NUMBER"):
-                # The # acts as separator, don't add a slash before it
-                run_number = f"#{os.environ['GITHUB_RUN_NUMBER']}"
-                # Join existing parts with "/" then append run number directly
-                if name_parts:
-                    name_value = "/".join(name_parts) + run_number
-                else:
-                    name_value = run_number
-                default_tags.append({"Key": "Name", "Value": name_value})
-            elif name_parts:
-                # No run number, just join the parts
-                default_tags.append({"Key": "Name", "Value": "/".join(name_parts)})
+            # Get run number
+            template_vars["run_number"] = os.environ.get("GITHUB_RUN_NUMBER", "unknown")
+
+            # Apply the instance name template
+            from string import Template
+            name_template = Template(self.instance_name)
+            name_value = name_template.safe_substitute(**template_vars)
+
+            default_tags.append({"Key": "Name", "Value": name_value})
 
         # Add repository tag if available
         if "Repository" not in existing_keys and os.environ.get("GITHUB_REPOSITORY"):

@@ -78,6 +78,11 @@ on:
         description: "Additional userdata script to run on instance startup (before runner starts)"
         required: false
         type: string
+      instance_name:
+        description: "Name tag template for EC2 instances. Uses Python string.Template format with variables: $repo, $name (workflow filename stem), $workflow (full workflow name), $ref, $run_number"
+        required: false
+        type: string
+        default: "$repo/$name#$run_number"
       max_instance_lifetime:
         description: "Maximum instance lifetime in minutes before automatic shutdown (falls back to vars.MAX_INSTANCE_LIFETIME, then 360 = 6 hours)"
         required: false
@@ -157,6 +162,7 @@ jobs:
           ec2_root_device_size: ${{ inputs.ec2_root_device_size }}
           ec2_security_group_id: ${{ inputs.ec2_security_group_id || vars.EC2_SECURITY_GROUP_ID }}
           ec2_userdata: ${{ inputs.ec2_userdata }}
+          instance_name: ${{ inputs.instance_name }}
           max_instance_lifetime: ${{ inputs.max_instance_lifetime || vars.MAX_INSTANCE_LIFETIME || '360' }}
           runner_initial_grace_period: ${{ inputs.runner_initial_grace_period }}
           runner_grace_period: ${{ inputs.runner_grace_period }}
