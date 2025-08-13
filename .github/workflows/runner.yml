@@ -21,10 +21,10 @@ on:
         required: true
     inputs:
       action_ref:
-        description: "ec2-gha Git ref (branch/tag/SHA) to checkout (overrides automatic ref extraction when set)"
+        description: "ec2-gha Git ref (branch/tag/SHA) to checkout"
         required: false
         type: string
-        default: ""
+        default: "v2"
       aws_region:
         description: "AWS region for EC2 instances (defaults to us-east-1)"
         required: false
@@ -124,18 +124,11 @@ jobs:
             exit 1
           fi
 
-      - name: Determine ref to checkout
-        id: extract-ref
-        uses: Open-Athena/extract-called-ref@dev
-        with:
-          target_repository: Open-Athena/ec2-gha
-          ref_override: ${{ inputs.action_ref }}
-
       - name: Checkout ec2-gha repository
         uses: actions/checkout@v4
         with:
           repository: Open-Athena/ec2-gha
-          ref: ${{ steps.extract-ref.outputs.ref }}
+          ref: ${{ inputs.action_ref }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
