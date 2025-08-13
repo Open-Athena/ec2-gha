@@ -95,6 +95,7 @@ Many of these fall back to corresponding `vars.*` (if not provided as `inputs`):
 - `max_instance_lifetime` - Maximum instance lifetime in minutes before automatic shutdown (falls back to `vars.MAX_INSTANCE_LIFETIME`, default: 360 = 6 hours; generally should not be relevant, instances shut down within 1-2mins of jobs completing)
 - `runner_grace_period` - Grace period in seconds before terminating after last job completes (default: 60)
 - `runner_initial_grace_period` - Grace period in seconds before terminating instance if no jobs start (default: 180)
+- `runner_poll_interval` - How often (in seconds) to check termination conditions (default: 10)
 - `ssh_pubkey` - SSH public key (for [SSH access])
 
 ## Outputs <a id="outputs"></a>
@@ -146,14 +147,22 @@ jobs:
 ```
 (see also [demo-job-seq], [demo-archs], [demo-matrix-wide])
 
-### How Termination Works <a id="termination"></a>
+### Termination logic <a id="termination"></a>
 
-1. [GitHub Actions runner hooks][hooks] track job lifecycle events
-2. When a job completes, the hook checks if other jobs are running
-3. If no jobs are active, a termination check is scheduled after the grace period
-4. The instance terminates if still idle when the check runs
-5. New jobs starting within the grace period cancel the termination
-6. Before shutdown, the runner process is gracefully stopped to remove itself from GitHub
+The runner uses [GitHub Actions runner hooks][hooks] to track job start/end events, and a `systemd` timer to poll for when there's:
+1. no active jobs running, and
+2. no job starts or ends in at least `runner_grace_period` seconds.
+
+Job start/end events `touch` a "last activity" timestamp file (`/var/run/github-runner-last-activity`), and the systemd timer checks this file every `runner_poll_interval` seconds (default: 10s).
+
+Each job's status is tracked in a JSON file like `/var/run/github-runner-jobs/<job_id>.job`.
+
+The default `runner_grace_period` is 60s, but a longer `runner_initial_grace_period` (default: 180s) is used for the first job after instance boot (to allow time for the runner to register and start).
+
+When terminating, the runner:
+- Gracefully stops the runner process
+- Removes itself from GitHub
+- Flushes CloudWatch logs
 
 ### CloudWatch Logs Integration <a id="cloudwatch"></a>
 
@@ -237,8 +246,8 @@ Once connected to the instance:
 
 - Uses non-ephemeral runners to support instance-reuse across jobs
 - Uses activity-based termination with systemd timer checks every 30 seconds
-- Terminates only after runner_grace_period seconds of inactivity (no race conditions)
-- Sets maximum instance lifetime (configurable via `max_instance_lifetime`, default: 6 hours)
+- Terminates only after `runner_grace_period` seconds of inactivity (no race conditions)
+- Also terminates after `max_instance_lifetime`, as a fail-safe (default: 6 hours)
 - Supports custom AMIs with pre-installed dependencies
 
 ### Default AWS Tags <a id="tags"></a>

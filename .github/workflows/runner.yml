@@ -92,6 +92,11 @@ on:
         required: false
         type: string
         default: "180"
+      runner_poll_interval:
+        description: "How often (in seconds) to check termination conditions (default 10)"
+        required: false
+        type: string
+        default: "10"
       runner_registration_timeout:
         description: "Maximum seconds to wait for runner to register with GitHub (default 300 = 5 minutes)"
         required: false
@@ -155,6 +160,7 @@ jobs:
           max_instance_lifetime: ${{ inputs.max_instance_lifetime || vars.MAX_INSTANCE_LIFETIME || '360' }}
           runner_initial_grace_period: ${{ inputs.runner_initial_grace_period }}
           runner_grace_period: ${{ inputs.runner_grace_period }}
+          runner_poll_interval: ${{ inputs.runner_poll_interval }}
           runner_registration_timeout: ${{ inputs.runner_registration_timeout }}
           ssh_pubkey: ${{ inputs.ssh_pubkey || vars.SSH_PUBKEY }}
         env:

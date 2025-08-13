@@ -46,6 +46,8 @@ class StartAWS(CreateCloudInstance):
         Grace period in seconds before terminating if no jobs have started. Defaults to "180".
     runner_grace_period : str
         Grace period in seconds before terminating instance after last job completes. Defaults to "60".
+    runner_poll_interval : str
+        How often (in seconds) to check termination conditions. Defaults to "10".
     script : str
         The script to run on the instance. Defaults to an empty string.
     security_group_id : str
@@ -75,6 +77,7 @@ class StartAWS(CreateCloudInstance):
     root_device_size: int = 0
     runner_grace_period: str = "60"
     runner_initial_grace_period: str = "180"
+    runner_poll_interval: str = "10"
     runner_release: str = ""
     script: str = ""
     security_group_id: str = ""
@@ -276,6 +279,7 @@ class StartAWS(CreateCloudInstance):
                 "repo": self.repo,
                 "runner_grace_period": self.runner_grace_period,
                 "runner_initial_grace_period": self.runner_initial_grace_period,
+                "runner_poll_interval": self.runner_poll_interval,
                 "runner_release": self.runner_release,
                 "script": self.script,
                 "ssh_pubkey": self.ssh_pubkey,
