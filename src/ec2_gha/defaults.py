@@ -8,7 +8,6 @@ RUNNER_POLL_INTERVAL = "10"    # 10 seconds
 RUNNER_REGISTRATION_TIMEOUT = "600"  # 10 minutes (in seconds)
 
 # EC2 instance defaults
-EC2_IMAGE_ID = "ami-0e86e20dae9224db8"  # Ubuntu 24.04 LTS x86_64
 EC2_INSTANCE_TYPE = "t3.medium"
 
 # Instance naming default template

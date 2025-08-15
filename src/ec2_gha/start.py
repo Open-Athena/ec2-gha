@@ -11,7 +11,7 @@ from gha_runner.clouddeployment import CreateCloudInstance
 from gha_runner.helper.workflow_cmds import output
 from copy import deepcopy
 
-from ec2_gha.defaults import AUTO
+from ec2_gha.defaults import AUTO, RUNNER_REGISTRATION_TIMEOUT
 
 
 @dataclass
@@ -302,7 +302,7 @@ class StartAWS(CreateCloudInstance):
                 "runner_grace_period": self.runner_grace_period,
                 "runner_initial_grace_period": self.runner_initial_grace_period,
                 "runner_poll_interval": self.runner_poll_interval,
-                "runner_registration_timeout": environ.get("INPUT_RUNNER_REGISTRATION_TIMEOUT", "600"),
+                "runner_registration_timeout": environ.get("INPUT_RUNNER_REGISTRATION_TIMEOUT", RUNNER_REGISTRATION_TIMEOUT),
                 "runner_release": self.runner_release,
                 "script": self.script,
                 "ssh_pubkey": self.ssh_pubkey,

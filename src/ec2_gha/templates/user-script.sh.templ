@@ -22,8 +22,8 @@ terminate_instance() {
 # Trap errors and ensure termination on failure
 trap 'terminate_instance "Setup script failed with error on line $$LINENO"' ERR
 
-# Set up registration timeout failsafe (default 10 minutes if not specified)
-REGISTRATION_TIMEOUT=$${runner_registration_timeout:-600}
+# Set up registration timeout failsafe
+REGISTRATION_TIMEOUT=$runner_registration_timeout
 (
     echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Watchdog: Starting $$REGISTRATION_TIMEOUT second timeout" >> /var/log/runner-setup.log
     sleep $$REGISTRATION_TIMEOUT

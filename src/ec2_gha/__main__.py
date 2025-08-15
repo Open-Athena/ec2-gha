@@ -7,7 +7,6 @@ from ec2_gha.defaults import (
     RUNNER_REGISTRATION_TIMEOUT,
     INSTANCE_NAME,
     INSTANCE_COUNT,
-    EC2_IMAGE_ID,
     EC2_INSTANCE_TYPE,
 )
 from gha_runner.gh import GitHubInstance
@@ -70,8 +69,11 @@ def main():
     params.setdefault("runner_initial_grace_period", RUNNER_INITIAL_GRACE_PERIOD)
     params.setdefault("runner_poll_interval", RUNNER_POLL_INTERVAL)
     params.setdefault("instance_name", INSTANCE_NAME)
-    params.setdefault("image_id", EC2_IMAGE_ID)
     params.setdefault("instance_type", EC2_INSTANCE_TYPE)
+    
+    # image_id is required - must be provided via input or vars
+    if not params.get("image_id"):
+        raise Exception("EC2 AMI ID (ec2_image_id) must be provided via input or vars.EC2_IMAGE_ID")
     # home_dir will be set to AUTO in start.py if not provided
 
     gh = GitHubInstance(token=token, repo=repo)

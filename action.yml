@@ -20,7 +20,7 @@ inputs:
     description: "Home directory on the AWS instance (falls back to vars.EC2_HOME_DIR, then auto-detection)"
     required: false
   ec2_image_id:
-    description: "AWS AMI ID to use (falls back to vars.EC2_IMAGE_ID, then ami-0e86e20dae9224db8 – Ubuntu 24.04 LTS)"
+    description: "AWS AMI ID to use (required - must be provided via input or vars.EC2_IMAGE_ID)"
     required: false
   ec2_instance_profile:
     description: "Instance profile name to attach to launched EC2 instance (required for CloudWatch logging)"
