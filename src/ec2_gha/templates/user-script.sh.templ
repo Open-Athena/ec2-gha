@@ -211,9 +211,17 @@ echo "$script" > pre-runner-script.sh
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Running pre-runner script"
 source pre-runner-script.sh
 export RUNNER_ALLOW_RUNASROOT=1
-# We will get the latest release from the GitHub API
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Downloading runner from: $runner_release"
-curl -L $runner_release -o runner.tar.gz
+# Detect architecture and download appropriate runner
+ARCH=$$(uname -m)
+if [ "$$ARCH" = "aarch64" ] || [ "$$ARCH" = "arm64" ]; then
+    # For ARM, replace x64 with arm64 in the URL
+    RUNNER_URL=$$(echo "$runner_release" | sed 's/x64/arm64/g')
+    echo "[$$(date '+%Y-%m-%d %H:%M:%S')] ARM detected, using: $$RUNNER_URL"
+else
+    RUNNER_URL="$runner_release"
+    echo "[$$(date '+%Y-%m-%d %H:%M:%S')] x64 detected, using: $$RUNNER_URL"
+fi
+curl -L $$RUNNER_URL -o runner.tar.gz
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Extracting runner"
 # `--no-overwrite-dir` is important, otherwise `$$homedir` ends up `chown`'d to `1001:docker`, and `sshd` will refuse connection attempts to `$$homedir`
 tar --no-overwrite-dir -xzf runner.tar.gz
