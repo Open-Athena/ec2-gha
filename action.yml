@@ -67,7 +67,7 @@ inputs:
     description: "How often (in seconds) to check termination conditions (falls back to vars.RUNNER_POLL_INTERVAL, then 10)"
     required: false
   runner_registration_timeout:
-    description: "Maximum seconds to wait for runner to register with GitHub (falls back to vars.RUNNER_REGISTRATION_TIMEOUT, then 600 = 10 minutes)"
+    description: "Maximum seconds to wait for runner to register with GitHub (falls back to vars.RUNNER_REGISTRATION_TIMEOUT, then 360 = 6 minutes)"
     required: false
   ssh_pubkey:
     description: "SSH public key to add to authorized_keys (falls back to vars.SSH_PUBKEY)"

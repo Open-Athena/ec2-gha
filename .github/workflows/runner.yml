@@ -102,7 +102,7 @@ on:
         required: false
         type: string
       runner_registration_timeout:
-        description: "Maximum seconds to wait for runner to register with GitHub (falls back to vars.RUNNER_REGISTRATION_TIMEOUT, then 600 = 10 minutes)"
+        description: "Maximum seconds to wait for runner to register with GitHub (falls back to vars.RUNNER_REGISTRATION_TIMEOUT, then 360 = 6 minutes)"
         required: false
         type: string
       ssh_pubkey:
