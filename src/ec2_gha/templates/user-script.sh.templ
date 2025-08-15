@@ -1,6 +1,38 @@
 #!/bin/bash
 set -e
 
+# Set up error handling and failsafe termination
+INSTANCE_ID=$$(curl -s http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null || echo "unknown")
+
+terminate_instance() {
+    local reason="$$1"
+    echo "[$$(date '+%Y-%m-%d %H:%M:%S')] FATAL: $$reason" | tee -a /var/log/runner-setup.log
+    echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Terminating instance $$INSTANCE_ID due to setup failure" | tee -a /var/log/runner-setup.log
+
+    # Try to remove runner if it was partially configured
+    if [ -f "$$homedir/config.sh" ] && [ -n "$${RUNNER_TOKEN:-}" ]; then
+        cd "$$homedir" && ./config.sh remove --token "$${RUNNER_TOKEN}" || true
+    fi
+
+    # Force termination
+    shutdown -h now
+    exit 1
+}
+
+# Trap errors and ensure termination on failure
+trap 'terminate_instance "Setup script failed with error on line $$LINENO"' ERR
+
+# Set up registration timeout failsafe (default 5 minutes if not specified)
+REGISTRATION_TIMEOUT=$${runner_registration_timeout:-300}
+(
+    sleep $$REGISTRATION_TIMEOUT
+    if [ ! -f /var/run/github-runner-registered ]; then
+        terminate_instance "Runner failed to register within $$REGISTRATION_TIMEOUT seconds"
+    fi
+) &
+REGISTRATION_WATCHDOG_PID=$$!
+echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Started registration watchdog (PID: $$REGISTRATION_WATCHDOG_PID, timeout: $${REGISTRATION_TIMEOUT}s)"
+
 $userdata
 
 # Initialize homedir from template variable
@@ -388,7 +420,18 @@ ALL_LABELS="$labels$${METADATA_LABELS}"
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Configuring runner for repo: $repo"
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Runner name: $${RUNNER_NAME}"
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Labels: $${ALL_LABELS}"
+# Export token for error handler
+export RUNNER_TOKEN="$token"
 ./config.sh --url https://github.com/$repo --token $token --labels "$${ALL_LABELS}" --name "$${RUNNER_NAME}" --disableupdate
+echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Runner registered successfully"
+
+# Mark registration as complete and kill the watchdog
+touch /var/run/github-runner-registered
+if [ -n "$${REGISTRATION_WATCHDOG_PID:-}" ]; then
+    kill $$REGISTRATION_WATCHDOG_PID 2>/dev/null || true
+    echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Killed registration watchdog (PID: $$REGISTRATION_WATCHDOG_PID)"
+fi
+
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Starting runner"
 # Create marker file for cleanup service
 touch /var/run/github-runner-started
