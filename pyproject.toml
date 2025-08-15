@@ -8,7 +8,7 @@ authors = [{ name = "Ethan Holz", email = "ethan.holz@omsf.io" }]
 dependencies = ["boto3", "gha_runner @ git+https://github.com/Open-Athena/gha-runner.git@v1"]
 
 [project.optional-dependencies]
-test = ["pytest", "pytest-cov", "moto[ec2]", "responses", "ruff"]
+test = ["pytest", "pytest-cov", "moto[ec2]", "responses", "ruff", "syrupy"]
 
 [build-system]
 # We are not going to add versioningit at this time
