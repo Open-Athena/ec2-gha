@@ -236,7 +236,6 @@ Once connected to the instance:
 ### Implementation Notes <a id="implementation"></a>
 
 - Uses non-ephemeral runners to support instance-reuse across jobs
-- Implements activity-based termination with systemd timer
 - Uses activity-based termination with systemd timer checks every 30 seconds
 - Terminates only after runner_grace_period seconds of inactivity (no race conditions)
 - Sets maximum instance lifetime (configurable via `max_instance_lifetime`, default: 6 hours)
