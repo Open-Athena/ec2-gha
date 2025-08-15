@@ -19,7 +19,7 @@ jobs:
     uses: ./.github/workflows/runner.yml
     with:
       ec2_instance_type: t4g.medium
-      ec2_image_id: ami-0a07e880fa53d77f2  # Ubuntu 24.04 LTS arm64
+      ec2_image_id: ami-0aa307ed50ca3e58f  # Ubuntu 24.04 LTS arm64 (us-east-1)
     secrets: inherit
 
   # Run jobs directly on launched instances
