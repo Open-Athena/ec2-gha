@@ -76,16 +76,32 @@ def get_log_events(log_group: str, log_stream: str, limit: int = 100, start_from
 
 
 def parse_timestamp(ts_str: str) -> Optional[datetime]:
-    """Parse various timestamp formats."""
-    # Try ISO format first
+    """Parse various timestamp formats and ensure timezone is set."""
+
+    # Try log format: "Thu Aug 14 00:29:25 UTC 2025"
+    # Note: strptime with %Z doesn't set tzinfo, so we need to handle UTC manually
+    if " UTC " in ts_str:
+        try:
+            ts_str_no_tz = ts_str.replace(" UTC ", " ")
+            return datetime.strptime(ts_str_no_tz, "%a %b %d %H:%M:%S %Y").replace(tzinfo=timezone.utc)
+        except:
+            pass
+
+    # Try format: "2025-08-14 17:37:20"
     try:
-        return datetime.fromisoformat(ts_str.replace("+00:00", "+00:00"))
+        dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+        # Always add UTC timezone for consistency
+        return dt.replace(tzinfo=timezone.utc)
     except:
         pass
 
-    # Try log format: "Thu Aug 14 00:29:25 UTC 2025"
+    # Try ISO format with timezone
     try:
-        return datetime.strptime(ts_str, "%a %b %d %H:%M:%S %Z %Y").replace(tzinfo=timezone.utc)
+        dt = datetime.fromisoformat(ts_str)
+        # If no timezone, add UTC
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
     except:
         pass
 
@@ -95,9 +111,15 @@ def parse_timestamp(ts_str: str) -> Optional[datetime]:
 def extract_timestamp_from_log(message: str) -> Optional[datetime]:
     """Extract timestamp from log message."""
     # Pattern: [Thu Aug 14 00:29:25 UTC 2025]
-    match = re.search(r'\[([^]]+UTC \d{4})]', message)
+    match = re.search(r'\[([^]]+UTC \d{4})\]', message)
     if match:
         return parse_timestamp(match.group(1))
+
+    # Pattern: [2025-08-14 17:37:20]
+    match = re.search(r'\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]', message)
+    if match:
+        return parse_timestamp(match.group(1))
+
     return None
 
 
@@ -119,8 +141,12 @@ def analyze_instance(instance_id: str, log_group: str = "/aws/ec2/github-runners
     # Get CloudWatch logs
     log_streams = get_log_streams(instance_id, log_group)
 
-    # Check if logs are empty (all streams have 0 bytes)
-    logs_empty = all(stream.get("storedBytes", 0) == 0 for stream in log_streams) if log_streams else True
+    # Check if logs are empty (all streams have no events)
+    # Note: storedBytes is often 0 even when there's data, so check for event timestamps instead
+    logs_empty = all(
+        stream.get("firstEventTimestamp") is None and stream.get("lastEventTimestamp") is None
+        for stream in log_streams
+    ) if log_streams else True
 
     # Extract instance info from logs
     if log_streams and not logs_empty:
@@ -158,6 +184,12 @@ def analyze_instance(instance_id: str, log_group: str = "/aws/ec2/github-runners
                             if match:
                                 result["instance_type"] = match.group(1).lower()
                                 break
+
+                    # Look for region in metadata
+                    if "Region:" in msg:
+                        match = re.search(r'Region:\s+(\S+)', msg)
+                        if match:
+                            result["tags"]["Region"] = match.group(1)
 
                     # Look for repository name
                     if "Repository:" in msg or "GITHUB_REPOSITORY" in msg:
@@ -533,13 +565,19 @@ Examples:
 
             except Exception as e:
                 err(f"Error analyzing {instance_id}: {e}")
-                # Add failed result
+                # Add failed result with all required fields
                 results.append({
                     "instance_id": instance_id,
                     "error": str(e),
                     "total_runtime_seconds": 0,
                     "job_runtime_seconds": 0,
-                    "estimated_cost": 0
+                    "estimated_cost": 0,
+                    "instance_type": "unknown",
+                    "state": "error",
+                    "launch_time": None,
+                    "termination_time": None,
+                    "jobs": [],
+                    "tags": {}
                 })
 
     # Sort results by instance ID for consistent output
