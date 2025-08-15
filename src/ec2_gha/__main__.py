@@ -10,7 +10,8 @@ def main():
     required = ["GH_PAT", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
     # Check that everything exists
     check_required(env, required)
-    timeout = int(os.environ["INPUT_MAX_INSTANCE_LIFETIME"])
+    # Timeout for waiting for runner to register with GitHub (default 5 minutes)
+    timeout = int(os.environ.get("INPUT_RUNNER_REGISTRATION_TIMEOUT", "300"))
 
     token = os.environ["GH_PAT"]
     # Make a copy of environment variables for immutability
