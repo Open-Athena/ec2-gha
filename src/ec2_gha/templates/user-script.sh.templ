@@ -100,14 +100,8 @@ fi
 if [ -n "$ssh_pubkey" ]; then
     echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Configuring SSH access"
 
-    # Determine the default user based on the home directory
-    if [ "$homedir" = "/home/ubuntu" ]; then
-        DEFAULT_USER="ubuntu"
-    elif [ "$homedir" = "/home/ec2-user" ]; then
-        DEFAULT_USER="ec2-user"
-    else
-        DEFAULT_USER="root"
-    fi
+    # Determine the default user based on the home directory owner
+    DEFAULT_USER=$$(stat -c "%U" "$homedir" 2>/dev/null || echo "root")
 
     # Create .ssh directory if it doesn't exist
     mkdir -p "$homedir/.ssh"
