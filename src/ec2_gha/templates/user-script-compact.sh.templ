@@ -1,0 +1,103 @@
+#!/bin/bash
+set -e
+INSTANCE_ID=$$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+terminate_instance() {
+    echo "FATAL: $$1" | tee -a /var/log/runner-setup.log
+    [ -f "$$H/config.sh" ] && cd "$$H" && ./config.sh remove --token "$${RT}" 2>/dev/null || true
+    shutdown -h now
+}
+trap 'terminate_instance "Error line $$LINENO"' ERR
+(sleep $${runner_registration_timeout:-300}; [ ! -f /var/run/ghr-reg ] && terminate_instance "Registration timeout") &
+RWP=$$!
+$userdata
+H="$homedir"
+[ -z "$$H" -o "$$H" = "AUTO" ] && for u in ubuntu ec2-user centos admin debian fedora; do
+    id $$u &>/dev/null && H="/home/$$u" && break
+done
+[ -z "$$H" -o "$$H" = "AUTO" ] && H=$$(getent passwd|awk -F: '$$3>=1000&&$$3<65534&&$$6~/^\/home\//{print $$6;exit}')
+[ -z "$$H" ] && H="/home/ec2-user"
+cd "$$H"
+nohup bash -c "sleep $${max_instance_lifetime}m && shutdown -h now" &>/dev/null &
+if [ "$cloudwatch_logs_group" != "" ]; then
+    apt-get update && apt-get install -y amazon-cloudwatch-agent || yum install -y amazon-cloudwatch-agent
+    cat>/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json<<EOF
+{"logs":{"logs_collected":{"files":{"collect_list":[
+{"file_path":"/var/log/runner-setup.log","log_group_name":"$cloudwatch_logs_group","log_stream_name":"$${INSTANCE_ID}/runner-setup"},
+{"file_path":"/tmp/job-started-hook.log","log_group_name":"$cloudwatch_logs_group","log_stream_name":"$${INSTANCE_ID}/job-started"},
+{"file_path":"/tmp/job-completed-hook.log","log_group_name":"$cloudwatch_logs_group","log_stream_name":"$${INSTANCE_ID}/job-completed"},
+{"file_path":"/tmp/termination-check.log","log_group_name":"$cloudwatch_logs_group","log_stream_name":"$${INSTANCE_ID}/termination"},
+{"file_path":"$$H/_diag/Runner_**.log","log_group_name":"$cloudwatch_logs_group","log_stream_name":"$${INSTANCE_ID}/runner-diag"},
+{"file_path":"$$H/_diag/Worker_**.log","log_group_name":"$cloudwatch_logs_group","log_stream_name":"$${INSTANCE_ID}/worker-diag"}
+]}}}}
+EOF
+    systemctl start amazon-cloudwatch-agent
+fi
+[ "$ssh_pubkey" != "" ] && mkdir -p $$H/.ssh && echo "$ssh_pubkey">>$$H/.ssh/authorized_keys && chmod 700 $$H/.ssh && chmod 600 $$H/.ssh/authorized_keys
+exec &>/var/log/runner-setup.log
+echo "$script" > pre-runner-script.sh && source pre-runner-script.sh
+export RUNNER_ALLOW_RUNASROOT=1
+curl -L $runner_release -o runner.tar.gz && tar --no-overwrite-dir -xzf runner.tar.gz
+cat>/usr/local/bin/job-started-hook.sh<<'E'
+#!/bin/bash
+exec>>/tmp/job-started-hook.log 2>&1
+echo "[$$(date)] Job started: $$GITHUB_JOB"
+touch /var/run/ghr-act
+mkdir -p /var/run/ghr-jobs
+echo '{"s":"r"}' > /var/run/ghr-jobs/$$GITHUB_RUN_ID-$$GITHUB_JOB.job
+E
+cat>/usr/local/bin/job-completed-hook.sh<<'E'
+#!/bin/bash
+exec>>/tmp/job-completed-hook.log 2>&1
+echo "[$$(date)] Job completed: $$GITHUB_JOB"
+rm -f /var/run/ghr-jobs/$$GITHUB_RUN_ID-$$GITHUB_JOB.job
+touch /var/run/ghr-act
+E
+cat>/usr/local/bin/check-runner-termination.sh<<'E'
+#!/bin/bash
+exec>>/tmp/termination-check.log 2>&1
+[ ! -f /var/run/ghr-act ] && exit 0
+L=$$(stat -c %Y /var/run/ghr-act 2>/dev/null || stat -f %m /var/run/ghr-act)
+I=$$(($$(date +%s)-L))
+G=$${RUNNER_GRACE_PERIOD:-60}
+[ ! -f /var/run/ghr-started ] && G=$${RUNNER_INITIAL_GRACE_PERIOD:-180}
+R=$$(ls /var/run/ghr-jobs/*.job 2>/dev/null|wc -l)
+[ $$R -eq 0 -a $$I -gt $$G ] && { [ -f $$H/config.sh ] && cd $$H && RUNNER_ALLOW_RUNASROOT=1 ./config.sh remove --token $${RT} || true; shutdown -h now; }
+E
+chmod +x /usr/local/bin/*-hook.sh
+cat>/etc/systemd/system/ghr-term.service<<EOF
+[Unit]
+Description=Check Runner Term
+[Service]
+Type=oneshot
+Environment="RUNNER_GRACE_PERIOD=$runner_grace_period"
+Environment="RUNNER_INITIAL_GRACE_PERIOD=$runner_initial_grace_period"
+Environment="RT=$token"
+Environment="H=$$H"
+ExecStart=/usr/local/bin/check-runner-termination.sh
+EOF
+cat>/etc/systemd/system/ghr-term.timer<<EOF
+[Unit]
+Description=Runner Term Timer
+[Timer]
+OnBootSec=60s
+OnUnitActiveSec=$${runner_poll_interval}s
+[Install]
+WantedBy=timers.target
+EOF
+systemctl daemon-reload && systemctl enable --now ghr-term.timer
+IT=$$(curl -s http://169.254.169.254/latest/meta-data/instance-type)
+RN="i-$${INSTANCE_ID:2}"
+ML=",instance-id:$${INSTANCE_ID},instance-type:$${IT},workflow:$github_workflow,run-id:$github_run_id,run-number:$github_run_number"
+AL="$labels$${ML}"
+export RT="$token"
+./config.sh --url https://github.com/$repo --token $token --labels "$$AL" --name "$$RN" --disableupdate
+touch /var/run/ghr-reg
+[ -n "$$RWP" ] && kill $$RWP 2>/dev/null || true
+touch /var/run/ghr-started
+mkdir -p $$H/_diag && chmod 755 $$H/_diag && chmod o+x $$H
+cat>.env<<EOF
+RUNNER_HOME=$$H
+ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/job-started-hook.sh
+ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/job-completed-hook.sh
+EOF
+./run.sh

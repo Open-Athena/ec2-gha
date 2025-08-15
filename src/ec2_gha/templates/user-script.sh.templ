@@ -31,7 +31,7 @@ REGISTRATION_TIMEOUT=$${runner_registration_timeout:-300}
     fi
 ) &
 REGISTRATION_WATCHDOG_PID=$$!
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Started registration watchdog (PID: $$REGISTRATION_WATCHDOG_PID, timeout: $${REGISTRATION_TIMEOUT}s)"
+echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Watchdog PID: $$REGISTRATION_WATCHDOG_PID"
 
 $userdata
 
@@ -45,7 +45,7 @@ if [ -z "$$homedir" ] || [ "$$homedir" = "AUTO" ]; then
     for user in ubuntu ec2-user centos admin debian fedora alpine arch; do
         if id "$$user" &>/dev/null; then
             homedir="/home/$$user"
-            echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Auto-detected home directory for user $$user: $$homedir"
+            echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Auto-detected: $$homedir"
             break
         fi
     done
@@ -62,20 +62,20 @@ if [ -z "$$homedir" ] || [ "$$homedir" = "AUTO" ]; then
 
         if [ -z "$$homedir" ]; then
             homedir="/home/ec2-user"  # Ultimate fallback
-            echo "[$$(date '+%Y-%m-%d %H:%M:%S')] No suitable user found, using fallback: $$homedir"
+            echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Using fallback: $$homedir"
         else
             # Use stat to get the actual owner of the directory
             owner=$$(stat -c "%U" "$$homedir" 2>/dev/null || stat -f "%Su" "$$homedir" 2>/dev/null)
-            echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Detected home directory for user $$owner: $$homedir"
+            echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Detected: $$homedir ($$owner)"
         fi
     fi
 else
-    echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Using specified home directory: $$homedir"
+    echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Using: $$homedir"
 fi
 
 # Set up maximum lifetime timeout - do this early to ensure cleanup
 MAX_LIFETIME_MINUTES=$max_instance_lifetime
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Setting up maximum lifetime timeout: $${MAX_LIFETIME_MINUTES} minutes"
+echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Max lifetime: $${MAX_LIFETIME_MINUTES}m"
 nohup bash -c "sleep $${MAX_LIFETIME_MINUTES}m && echo '[$$(date)] Maximum lifetime reached' && shutdown -h now" > /var/log/max-lifetime.log 2>&1 &
 
 # Configure CloudWatch Logs if enabled
@@ -191,7 +191,7 @@ fi
 
 # Redirect runner setup logs to a file for CloudWatch
 exec >> /var/log/runner-setup.log 2>&1
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] GitHub runner setup starting"
+echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Starting runner setup"
 
 # Log instance metadata for later analysis
 INSTANCE_TYPE=$$(curl -s http://169.254.169.254/latest/meta-data/instance-type 2>/dev/null || echo "unknown")
