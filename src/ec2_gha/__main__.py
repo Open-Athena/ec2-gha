@@ -21,7 +21,8 @@ def main():
     # Check that everything exists
     check_required(env, required)
     # Timeout for waiting for runner to register with GitHub
-    timeout = int(os.environ.get("INPUT_RUNNER_REGISTRATION_TIMEOUT", RUNNER_REGISTRATION_TIMEOUT))
+    timeout_str = os.environ.get("INPUT_RUNNER_REGISTRATION_TIMEOUT", "").strip()
+    timeout = int(timeout_str) if timeout_str else int(RUNNER_REGISTRATION_TIMEOUT)
 
     token = os.environ["GH_PAT"]
     # Make a copy of environment variables for immutability
