@@ -217,128 +217,40 @@ curl -L $runner_release -o runner.tar.gz
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Extracting runner"
 # `--no-overwrite-dir` is important, otherwise `$$homedir` ends up `chown`'d to `1001:docker`, and `sshd` will refuse connection attempts to `$$homedir`
 tar --no-overwrite-dir -xzf runner.tar.gz
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Setting up job tracking scripts"
-# Create minimal job tracking scripts inline
+# Create job tracking scripts
 cat > /usr/local/bin/job-started-hook.sh << 'EOFS'
 #!/bin/bash
 exec >> /tmp/job-started-hook.log 2>&1
-echo "[$$(date)] Job STARTED  : $${GITHUB_WORKFLOW}/$${GITHUB_JOB} (Run: $${GITHUB_RUN_ID}/$${GITHUB_RUN_NUMBER}, Attempt: $${GITHUB_RUN_ATTEMPT})"
-echo "  Repository: $${GITHUB_REPOSITORY}"
-echo "  Runner: $${RUNNER_NAME}"
-JOB_TRACK_DIR="/var/run/github-runner-jobs"
-mkdir -p "$${JOB_TRACK_DIR}"
-echo "{\"job_id\":\"$${GITHUB_JOB}\",\"run_id\":\"$${GITHUB_RUN_ID}\",\"workflow\":\"$${GITHUB_WORKFLOW}\",\"status\":\"running\"}" > "$${JOB_TRACK_DIR}/$${GITHUB_RUN_ID}-$${GITHUB_JOB}.job"
-# Update activity timestamp
+echo "[$$(date)] Job started: $${GITHUB_JOB}"
+mkdir -p /var/run/github-runner-jobs
+echo '{"status":"running"}' > /var/run/github-runner-jobs/$${GITHUB_RUN_ID}-$${GITHUB_JOB}.job
 touch /var/run/github-runner-last-activity
 EOFS
 
 cat > /usr/local/bin/job-completed-hook.sh << 'EOFC'
 #!/bin/bash
 exec >> /tmp/job-completed-hook.log 2>&1
-echo "[$$(date)] Job COMPLETED: $${GITHUB_WORKFLOW}/$${GITHUB_JOB} (Run: $${GITHUB_RUN_ID}/$${GITHUB_RUN_NUMBER}, Attempt: $${GITHUB_RUN_ATTEMPT})"
-echo "  Repository: $${GITHUB_REPOSITORY}"
-echo "  Runner: $${RUNNER_NAME}"
-JOB_TRACK_DIR="/var/run/github-runner-jobs"
-if [ -f "$${JOB_TRACK_DIR}/$${GITHUB_RUN_ID}-$${GITHUB_JOB}.job" ]; then
-    sed -i 's/"status":"running"/"status":"completed"/' "$${JOB_TRACK_DIR}/$${GITHUB_RUN_ID}-$${GITHUB_JOB}.job"
-fi
-# Count remaining running jobs
-RUNNING_JOBS=$$(grep -l '"status":"running"' "$${JOB_TRACK_DIR}"/*.job 2>/dev/null | wc -l || echo 0)
-echo "  Running jobs remaining: $${RUNNING_JOBS}"
-# Update activity timestamp
+echo "[$$(date)] Job completed: $${GITHUB_JOB}"
+rm -f /var/run/github-runner-jobs/$${GITHUB_RUN_ID}-$${GITHUB_JOB}.job
 touch /var/run/github-runner-last-activity
 EOFC
 
 cat > /usr/local/bin/check-runner-termination.sh << 'EOFT'
 #!/bin/bash
 exec >> /tmp/termination-check.log 2>&1
-echo "[$$(date)] Checking termination conditions"
-
-ACTIVITY_FILE="/var/run/github-runner-last-activity"
-GRACE_PERIOD="$${RUNNER_GRACE_PERIOD:-60}"
-INITIAL_GRACE_PERIOD="$${RUNNER_INITIAL_GRACE_PERIOD:-180}"
-JOB_TRACK_DIR="/var/run/github-runner-jobs"
-
-# Check if activity file exists
-if [ ! -f "$${ACTIVITY_FILE}" ]; then
-    echo "[$$(date)] WARNING: No activity file found, creating it now"
-    touch "$${ACTIVITY_FILE}"
-fi
-
-# Get last activity time and current time
-LAST_ACTIVITY=$$(stat -c %Y "$${ACTIVITY_FILE}" 2>/dev/null || echo 0)
-NOW=$$(date +%s)
-IDLE_TIME=$$((NOW - LAST_ACTIVITY))
-
-# Check if any jobs have ever run
-if ls "$${JOB_TRACK_DIR}"/*.job 2>/dev/null | grep -q .; then
-    JOBS_HAVE_RUN=true
-    CURRENT_GRACE_PERIOD="$${GRACE_PERIOD}"
-else
-    JOBS_HAVE_RUN=false
-    CURRENT_GRACE_PERIOD="$${INITIAL_GRACE_PERIOD}"
-fi
-
-echo "[$$(date)] Last activity: $$(date -d @$${LAST_ACTIVITY} '+%Y-%m-%d %H:%M:%S')"
-echo "[$$(date)] Current time: $$(date '+%Y-%m-%d %H:%M:%S')"
-echo "[$$(date)] Idle time: $${IDLE_TIME} seconds (grace period: $${CURRENT_GRACE_PERIOD} seconds)"
-echo "[$$(date)] Jobs have run: $${JOBS_HAVE_RUN}"
-
-# Check for running jobs first
-RUNNING_JOBS=$$(grep -l '"status":"running"' "$${JOB_TRACK_DIR}"/*.job 2>/dev/null | wc -l || echo 0)
-echo "[$$(date)] Running jobs: $${RUNNING_JOBS}"
-
-# Show status of each job for debugging
-echo "[$$(date)] Current job files:"
-for job_file in "$${JOB_TRACK_DIR}"/*.job; do
-    if [ -f "$${job_file}" ]; then
-        job_status=$$(grep -o '"status":"[^"]*"' "$${job_file}" || echo "unknown")
-        echo "[$$(date)]   $$(basename "$${job_file}"): $${job_status}"
-    fi
-done || echo "[$$(date)]   No job files found"
-
-# Never terminate if jobs are running
-if [ "$${RUNNING_JOBS}" -gt 0 ]; then
-    echo "[$$(date)] Jobs are still running, not checking idle time"
-elif [ "$${IDLE_TIME}" -gt "$${CURRENT_GRACE_PERIOD}" ]; then
-    echo "[$$(date)] No running jobs and no activity for $${IDLE_TIME} seconds, proceeding with termination"
-
-    # Try to remove runner from GitHub first
-    if [ -f "$$homedir/config.sh" ]; then
-        echo "[$$(date)] Removing runner from GitHub"
-        cd "$$homedir"
-        # Stop the runner service
-        RUNNER_PID=$$(pgrep -f "Runner.Listener" | head -1)
-        if [ -n "$${RUNNER_PID}" ]; then
-            echo "[$$(date)] Stopping runner PID $${RUNNER_PID}"
-            kill -INT "$${RUNNER_PID}" 2>/dev/null || true
-            # Wait for it to stop
-            for i in {1..10}; do
-                if ! kill -0 "$${RUNNER_PID}" 2>/dev/null; then
-                    echo "[$$(date)] Runner stopped"
-                    break
-                fi
-                sleep 1
-            done
-        fi
-
-        # Remove runner from GitHub
-        # We need RUNNER_ALLOW_RUNASROOT=1 to remove as root, just like when we configured it
-        if RUNNER_ALLOW_RUNASROOT=1 ./config.sh remove --token $token; then
-            echo "[$$(date)] Runner removed from GitHub successfully"
-        else
-            echo "[$$(date)] Failed to remove runner from GitHub"
-        fi
-    fi
-
-    # Flush CloudWatch logs before shutdown
-    echo "[$$(date)] Flushing CloudWatch logs"
-    sync
-    sleep 5
-
-    sudo shutdown -h now "Runner terminating after idle timeout"
-else
-    echo "[$$(date)] Activity detected within $${CURRENT_GRACE_PERIOD} seconds, not terminating"
+A="/var/run/github-runner-last-activity"
+J="/var/run/github-runner-jobs"
+[ ! -f "$$A" ] && touch "$$A"
+L=$$(stat -c %Y "$$A" 2>/dev/null || echo 0)
+I=$$(($$(date +%s)-L))
+if ls $$J/*.job 2>/dev/null | grep -q .; then G=$${RUNNER_GRACE_PERIOD:-60}; else G=$${RUNNER_INITIAL_GRACE_PERIOD:-180}; fi
+R=$$(grep -l '"status":"running"' $$J/*.job 2>/dev/null | wc -l || echo 0)
+if [ $$R -eq 0 ] && [ $$I -gt $$G ]; then
+    echo "[$$(date)] Terminating: idle $$I > grace $$G"
+    [ -f "$$homedir/config.sh" ] && cd "$$homedir" && pkill -INT -f "Runner.Listener" 2>/dev/null || true
+    sleep 2
+    [ -f "$$homedir/config.sh" ] && RUNNER_ALLOW_RUNASROOT=1 ./config.sh remove --token $token || true
+    shutdown -h now
 fi
 EOFT
 

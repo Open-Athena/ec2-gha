@@ -208,8 +208,7 @@ class StartAWS(CreateCloudInstance):
             The user data script as a string.
 
         """
-        # Use compact template to stay under 16KB userdata limit
-        template = importlib.resources.files("ec2_gha").joinpath("templates/user-script-compact.sh.templ")
+        template = importlib.resources.files("ec2_gha").joinpath("templates/user-script.sh.templ")
         with template.open() as f:
             template_content = f.read()
 
