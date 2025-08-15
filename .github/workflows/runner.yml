@@ -102,7 +102,7 @@ on:
         required: false
         type: string
       runner_registration_timeout:
-        description: "Maximum seconds to wait for runner to register with GitHub (falls back to vars.RUNNER_REGISTRATION_TIMEOUT, then 300 = 5 minutes)"
+        description: "Maximum seconds to wait for runner to register with GitHub (falls back to vars.RUNNER_REGISTRATION_TIMEOUT, then 600 = 10 minutes)"
         required: false
         type: string
       ssh_pubkey:
@@ -174,7 +174,7 @@ jobs:
           runner_initial_grace_period: ${{ inputs.runner_initial_grace_period || vars.RUNNER_INITIAL_GRACE_PERIOD || '180' }}
           runner_grace_period: ${{ inputs.runner_grace_period || vars.RUNNER_GRACE_PERIOD || '60' }}
           runner_poll_interval: ${{ inputs.runner_poll_interval || vars.RUNNER_POLL_INTERVAL || '10' }}
-          runner_registration_timeout: ${{ inputs.runner_registration_timeout || vars.RUNNER_REGISTRATION_TIMEOUT || '300' }}
+          runner_registration_timeout: ${{ inputs.runner_registration_timeout || vars.RUNNER_REGISTRATION_TIMEOUT || '600' }}
           ssh_pubkey: ${{ inputs.ssh_pubkey || vars.SSH_PUBKEY }}
         env:
           GH_PAT: ${{ secrets.GH_SA_TOKEN }}
