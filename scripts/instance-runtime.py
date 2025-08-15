@@ -432,7 +432,11 @@ def get_region_name(region_code: str) -> str:
     return region_code
 
 
-def calculate_cost(instance_type: str, runtime_seconds: int, region: str = "us-east-1") -> float:
+def calculate_cost(
+    instance_type: str,
+    runtime_seconds: int,
+    region: str = "us-east-1",
+) -> float:
     """Calculate cost based on instance type and runtime."""
     hourly_cost = get_instance_price(instance_type, region)
     if hourly_cost == 0:

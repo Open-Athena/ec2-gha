@@ -20,3 +20,9 @@ jobs:
   demo-matrix-wide:
     uses: ./.github/workflows/demo-matrix-wide.yml
     secrets: inherit
+  demo-multi-instance:
+    uses: ./.github/workflows/demo-multi-instance.yml
+    secrets: inherit
+  demo-multi-job:
+    uses: ./.github/workflows/demo-multi-job.yml
+    secrets: inherit

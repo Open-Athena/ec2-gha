@@ -82,14 +82,15 @@ Many of these fall back to corresponding `vars.*` (if not provided as `inputs`):
 - `action_ref` - ec2-gha Git ref to checkout (branch/tag/SHA); auto-detected if not specified
 - `cloudwatch_logs_group` - CloudWatch Logs group name for streaming logs (falls back to `vars.CLOUDWATCH_LOGS_GROUP`)
 - `ec2_home_dir` - Home directory (default: `/home/ubuntu`)
-- `ec2_image_id` - AMI ID (default: Deep Learning AMI)
+- `ec2_image_id` - AMI ID (default: Ubuntu 24.04 LTS)
 - `ec2_instance_profile` - IAM instance profile name for EC2 instances
   - Useful for on-instance debugging [via SSH][SSH access]
   - Required for [CloudWatch logging][cw]
   - Falls back to `vars.EC2_INSTANCE_PROFILE`
   - See [Appendix: IAM Role Setup](#iam-setup-appendix) for more details and sample setup code
-- `ec2_instance_type` - Instance type (default: `g4dn.xlarge`)
+- `ec2_instance_type` - Instance type (default: `t3.medium`)
 - `ec2_key_name` - EC2 key pair name (for [SSH access])
+- `instance_count` - Number of instances to create (default: 1, for parallel jobs)
 - `ec2_root_device_size` - Root device size in GB (default: 0 = use AMI default)
 - `ec2_security_group_id` - Security group ID (required for [SSH access], should expose inbound port 22)
 - `max_instance_lifetime` - Maximum instance lifetime in minutes before automatic shutdown (falls back to `vars.MAX_INSTANCE_LIFETIME`, default: 360 = 6 hours; generally should not be relevant, instances shut down within 1-2mins of jobs completing)
@@ -100,9 +101,11 @@ Many of these fall back to corresponding `vars.*` (if not provided as `inputs`):
 
 ## Outputs <a id="outputs"></a>
 
-| Name | Description                                 |
-|------|---------------------------------------------|
-| id   | Value to pass to subsequent jobs' `runs-on` |
+| Name | Description                                                              |
+|------|--------------------------------------------------------------------------|
+| id   | Single runner label for `runs-on` (when `instance_count=1`)            |
+| instances | JSON array of runner labels (for use with matrix strategy)         |
+| mapping | JSON object mapping instance IDs to labels (for debugging)          |
 
 ## Technical Details <a id="technical"></a>
 
@@ -115,7 +118,34 @@ This workflow creates EC2 instances with GitHub Actions runners that:
 - Use [GitHub's native runner hooks][hooks] for job tracking
 - Optionally support [SSH access] and [CloudWatch logging][cw] (for debugging)
 
-### Multi-Job Workflows <a id="multi-job"></a>
+### Parallel Jobs (Multiple Instances) <a id="parallel"></a>
+
+Create multiple EC2 instances for parallel execution using `instance_count`:
+
+```yaml
+jobs:
+  ec2:
+    uses: Open-Athena/ec2-gha/.github/workflows/runner.yml@main
+    secrets: inherit
+    with:
+      instance_count: "3"  # Create 3 instances
+
+  parallel-jobs:
+    needs: ec2
+    strategy:
+      matrix:
+        runner: ${{ fromJson(needs.ec2.outputs.instances) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - run: echo "Running on ${{ matrix.runner }}"
+```
+
+Each instance gets a unique runner label and can execute jobs independently. This is useful for:
+- Matrix builds that need isolated environments
+- Parallel testing across different configurations
+- Distributed workloads
+
+### Multi-Job Workflows (Sequential) <a id="multi-job"></a>
 
 The runner supports multiple sequential jobs on the same instance, e.g.:
 

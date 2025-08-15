@@ -75,6 +75,11 @@ on:
         description: "Additional userdata script to run on instance startup (before runner starts)"
         required: false
         type: string
+      instance_count:
+        description: "Number of EC2 instances to create (for parallel jobs)"
+        required: false
+        type: string
+        default: "1"
       instance_name:
         description: "Name tag template for EC2 instances. Uses Python string.Template format with variables: $repo, $name (workflow filename stem), $workflow (full workflow name), $ref, $run_number"
         required: false
@@ -106,8 +111,14 @@ on:
         type: string
     outputs:
       id:
-        description: "Instance ID for runs-on"
+        description: "Instance ID for runs-on (single instance)"
         value: ${{ jobs.launch.outputs.id }}
+      instances:
+        description: "JSON array of runner labels (for multiple instances)"
+        value: ${{ jobs.launch.outputs.instances }}
+      mapping:
+        description: "JSON object mapping instance IDs to runner labels"
+        value: ${{ jobs.launch.outputs.mapping }}
 
 permissions:
   id-token: write # Required for AWS OIDC
@@ -118,6 +129,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       id: ${{ steps.aws-start.outputs.label }}
+      instances: ${{ steps.aws-start.outputs.instances }}
+      mapping: ${{ steps.aws-start.outputs.mapping }}
     steps:
       - name: Check EC2_LAUNCH_ROLE configuration
         run: |
@@ -155,6 +168,7 @@ jobs:
           ec2_root_device_size: ${{ inputs.ec2_root_device_size }}
           ec2_security_group_id: ${{ inputs.ec2_security_group_id || vars.EC2_SECURITY_GROUP_ID }}
           ec2_userdata: ${{ inputs.ec2_userdata }}
+          instance_count: ${{ inputs.instance_count }}
           instance_name: ${{ inputs.instance_name }}
           max_instance_lifetime: ${{ inputs.max_instance_lifetime || vars.MAX_INSTANCE_LIFETIME || '360' }}
           runner_initial_grace_period: ${{ inputs.runner_initial_grace_period || vars.RUNNER_INITIAL_GRACE_PERIOD || '180' }}
