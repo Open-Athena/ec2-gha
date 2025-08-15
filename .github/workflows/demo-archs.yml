@@ -12,7 +12,7 @@ jobs:
     uses: ./.github/workflows/runner.yml
     with:
       ec2_instance_type: t3.medium
-      # Ubuntu 24.04 LTS x86_64 (default AMI)
+      ec2_image_id: ami-0e86e20dae9224db8  # Ubuntu 24.04 LTS x86_64 (us-east-1)
     secrets: inherit
   arm:
     name: Launch ARM

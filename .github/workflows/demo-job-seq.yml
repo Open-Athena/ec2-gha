@@ -23,6 +23,8 @@ jobs:
   ec2:
     uses: ./.github/workflows/runner.yml
     secrets: inherit
+    with:
+      ec2_image_id: ami-0e86e20dae9224db8  # Ubuntu 24.04 LTS x86_64 (us-east-1)
 
   prepare:
     needs: ec2

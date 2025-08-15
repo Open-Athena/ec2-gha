@@ -14,6 +14,7 @@ jobs:
     secrets: inherit
     with:
       instance_count: "2"
+      ec2_image_id: ami-0e86e20dae9224db8  # Ubuntu 24.04 LTS x86_64 (us-east-1)
 
   # First job type - runs on first instance
   build-job:
