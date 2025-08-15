@@ -1,8 +1,17 @@
 name: Demo – minimal EC2 GPU runner
 on:
   workflow_dispatch:
+  workflow_call:   # Tested by `demos.yml`
+permissions:
+  id-token: write  # Required for AWS OIDC authentication
+  contents: read   # Required for actions/checkout
 jobs:
-  placeholder:
-    runs-on: ubuntu-latest
+  ec2:
+    # To use from another repo: Open-Athena/ec2-gha/.github/workflows/runner.yml
+    uses: ./.github/workflows/runner.yml
+    secrets: inherit
+  gpu-test:
+    needs: ec2
+    runs-on: ${{ needs.ec2.outputs.id }}
     steps:
-      - run: echo "Placeholder workflow – being developed in \#2 / rw/hooks branch"
+    - run: nvidia-smi  # Verify GPU is available

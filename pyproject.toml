@@ -1,5 +1,5 @@
 [project]
-name = "start_aws_gha_runner"
+name = "ec2_gha"
 version = "1.0.0"
 description = "Start an AWS GitHub Actions Runner"
 readme = "README.md"
@@ -8,7 +8,7 @@ authors = [{ name = "Ethan Holz", email = "ethan.holz@omsf.io" }]
 dependencies = ["boto3", "gha_runner @ git+https://github.com/Open-Athena/gha-runner.git@v1"]
 
 [project.optional-dependencies]
-test = ["pytest", "pytest-cov", "moto[ec2]", "responses"]
+test = ["pytest", "pytest-cov", "moto[ec2]", "responses", "ruff"]
 
 [build-system]
 # We are not going to add versioningit at this time
@@ -19,13 +19,14 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-start_aws_gha_runner = ["*.templ", "templates/*.templ"]
+ec2_gha = ["*.templ", "templates/*.templ"]
 
 [tool.pytest.ini_options]
 markers = ["slow: marks test as slow"]
 
 [tool.ruff]
-line-length = 80
+line-length = 999
 
 [tool.ruff.lint]
 select = ["F", "E", "N"]
+ignore = ["E501"]
