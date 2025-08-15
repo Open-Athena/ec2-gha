@@ -92,6 +92,11 @@ on:
         required: false
         type: string
         default: "180"
+      runner_registration_timeout:
+        description: "Maximum seconds to wait for runner to register with GitHub (default 300 = 5 minutes)"
+        required: false
+        type: string
+        default: "300"
       ssh_pubkey:
         description: "SSH public key to add to authorized_keys (falls back to vars.SSH_PUBKEY)"
         required: false
@@ -157,6 +162,7 @@ jobs:
           max_instance_lifetime: ${{ inputs.max_instance_lifetime || vars.MAX_INSTANCE_LIFETIME || '360' }}
           runner_initial_grace_period: ${{ inputs.runner_initial_grace_period }}
           runner_grace_period: ${{ inputs.runner_grace_period }}
+          runner_registration_timeout: ${{ inputs.runner_registration_timeout }}
           ssh_pubkey: ${{ inputs.ssh_pubkey || vars.SSH_PUBKEY }}
         env:
           GH_PAT: ${{ secrets.GH_SA_TOKEN }}

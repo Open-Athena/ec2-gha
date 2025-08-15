@@ -62,6 +62,10 @@ inputs:
     description: "Grace period in seconds before terminating instance if no jobs start (default 120)"
     required: false
     default: "120"
+  runner_registration_timeout:
+    description: "Maximum seconds to wait for runner to register with GitHub (default 300 = 5 minutes)"
+    required: false
+    default: "300"
   ssh_pubkey:
     description: "SSH public key to add to authorized_keys for debugging access"
     required: false
