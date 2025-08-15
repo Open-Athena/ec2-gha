@@ -3,6 +3,9 @@
 logger "EC2-GHA: Starting userdata script"
 echo "EC2-GHA: Starting userdata script" >&2
 
+# Log any errors to syslog before exiting
+trap 'logger "EC2-GHA: Script failed at line $$LINENO with exit code $$?"' ERR
+
 set -e
 
 # Set up error handling and failsafe termination
