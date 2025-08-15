@@ -189,15 +189,15 @@ if [ -n "$ssh_pubkey" ]; then
     echo "[$$(date '+%Y-%m-%d %H:%M:%S')] SSH key added for user $$DEFAULT_USER"
 fi
 
+# Fetch instance metadata before redirecting output
+INSTANCE_TYPE=$$(curl -s http://169.254.169.254/latest/meta-data/instance-type || echo "unknown")
+INSTANCE_ID=$$(curl -s http://169.254.169.254/latest/meta-data/instance-id || echo "unknown")
+REGION=$$(curl -s http://169.254.169.254/latest/meta-data/placement/region || echo "unknown")
+AZ=$$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone || echo "unknown")
+
 # Redirect runner setup logs to a file for CloudWatch
 exec >> /var/log/runner-setup.log 2>&1
 echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Starting runner setup"
-
-# Log instance metadata for later analysis
-INSTANCE_TYPE=$$(curl -s http://169.254.169.254/latest/meta-data/instance-type 2>/dev/null || echo "unknown")
-INSTANCE_ID=$$(curl -s http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null || echo "unknown")
-REGION=$$(curl -s http://169.254.169.254/latest/meta-data/placement/region 2>/dev/null || echo "unknown")
-AZ=$$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null || echo "unknown")
 
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Instance metadata:"
 echo "  Instance type: $${INSTANCE_TYPE}"
