@@ -23,12 +23,8 @@ def aws():
         yield StartAWS(**params)
 
 
-def test_build_user_data(aws):
-    """Test that template parameters are correctly substituted
-
-    This test verifies template substitution by checking for specific
-    lines in the output, which is more meaningful than substring matching.
-    """
+def test_build_user_data(aws, snapshot):
+    """Test that template parameters are correctly substituted using snapshot testing"""
     params = {
         "cloudwatch_logs_group": "",  # Empty = disabled
         "github_run_id": "123456789",
@@ -46,48 +42,18 @@ def test_build_user_data(aws):
         "userdata": "echo 'custom userdata'",
     }
     user_data = aws._build_user_data(**params)
-    lines = user_data.strip().split('\n')
 
     # Verify all substitutions happened (no template variables remain)
     template_vars = [ f'${k}' for k in params ]
     for var in template_vars:
         assert var not in user_data, f"Template variable {var} was not substituted"
 
-    # Test specific lines exist in the output
-    assert "#!/bin/bash" in lines
-    assert "set -e" in lines
-    assert "echo 'custom userdata'" in lines
-    assert 'cd "/home/test-user"' in lines
-    assert "echo \"echo 'test script'\" > pre-runner-script.sh" in lines
-    assert "source pre-runner-script.sh" in lines
-    assert "export RUNNER_ALLOW_RUNASROOT=1" in lines
-    assert "curl -L https://example.com/runner.tar.gz -o runner.tar.gz" in lines
-    assert '    echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host" >> "/home/test-user/.ssh/authorized_keys"' in lines
-    # Check that hook scripts are created inline
-    assert "cat > /usr/local/bin/job-started-hook.sh" in user_data
-    assert "cat > /usr/local/bin/job-completed-hook.sh" in user_data
-    assert "cat > /usr/local/bin/check-runner-termination.sh" in user_data
-    assert "chmod +x /usr/local/bin/job-started-hook.sh /usr/local/bin/job-completed-hook.sh /usr/local/bin/check-runner-termination.sh" in user_data
-    assert "echo \"ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/job-started-hook.sh\" > .env" in lines
-    assert "echo \"ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/job-completed-hook.sh\" >> .env" in lines
-    assert 'echo "RUNNER_HOME=/home/test-user" >> .env' in lines
-    assert 'echo "RUNNER_GRACE_PERIOD=60" >> .env' in lines
-    assert "mkdir -p /var/run/github-runner-jobs" in lines
-    # The config.sh line now includes --name and formatted labels
-    # Just check that the key components are present in the output
-    assert any("./config.sh" in line and "https://github.com/test-org/test-repo" in line and "test-token-xyz" in line for line in lines)
-    assert "touch /var/run/github-runner-started" in lines
-    assert "touch /var/run/github-runner-last-activity" in lines
-    assert "./run.sh" in lines
-
-    # Check CloudWatch block exists but won't execute when empty
-    assert 'if [ "" != "" ]; then' in user_data  # Empty string test will be false
-    assert "Installing CloudWatch agent" in user_data  # Block exists in script
-    # The agent won't actually be installed because the if condition is false
+    # Use snapshot to verify the entire output
+    assert user_data == snapshot
 
 
-def test_build_user_data_with_cloudwatch(aws):
-    """Test user data with CloudWatch Logs enabled"""
+def test_build_user_data_with_cloudwatch(aws, snapshot):
+    """Test user data with CloudWatch Logs enabled using snapshot testing"""
     params = {
         "cloudwatch_logs_group": "/aws/ec2/github-runners",
         "github_run_id": "123456789",
@@ -107,14 +73,13 @@ def test_build_user_data_with_cloudwatch(aws):
     }
     user_data = aws._build_user_data(**params)
 
-    # Check CloudWatch agent installation
-    assert "Installing CloudWatch agent" in user_data
-    assert "amazon-cloudwatch-agent.deb" in user_data
-    assert "/aws/ec2/github-runners" in user_data
-    assert "log_group_name" in user_data
-    assert "job-started-hook.log" in user_data
-    assert "job-completed-hook.log" in user_data
-    assert "termination-check.log" in user_data
+    # Verify all substitutions happened (no template variables remain)
+    template_vars = [ f'${k}' for k in params ]
+    for var in template_vars:
+        assert var not in user_data, f"Template variable {var} was not substituted"
+
+    # Use snapshot to verify the entire output
+    assert user_data == snapshot
 
 
 def test_build_user_data_missing_params(aws):
