@@ -24,7 +24,7 @@ on:
         description: "ec2-gha Git ref (branch/tag/SHA) to checkout"
         required: false
         type: string
-        default: "v2"
+        default: "test"
       aws_region:
         description: "AWS region for EC2 instances (defaults to us-east-1)"
         required: false
