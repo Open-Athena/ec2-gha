@@ -11,6 +11,8 @@ from gha_runner.clouddeployment import CreateCloudInstance
 from gha_runner.helper.workflow_cmds import output
 from copy import deepcopy
 
+from ec2_gha.defaults import AUTO
+
 
 @dataclass
 class StartAWS(CreateCloudInstance):
@@ -18,8 +20,6 @@ class StartAWS(CreateCloudInstance):
 
     Parameters
     ----------
-    home_dir : str
-        The home directory of the user.
     image_id : str
         The ID of the AMI to use.
     instance_type : str
@@ -32,6 +32,8 @@ class StartAWS(CreateCloudInstance):
         CloudWatch Logs group name for streaming runner logs. Defaults to an empty string.
     gh_runner_tokens : list[str]
         A list of GitHub runner tokens. Defaults to an empty list.
+    home_dir : str
+        The home directory of the user. If not provided, will be inferred from the AMI.
     iam_instance_profile : str
         The name of the IAM role to use. Defaults to an empty string.
     key_name : str
@@ -63,13 +65,13 @@ class StartAWS(CreateCloudInstance):
 
     """
 
-    home_dir: str
     image_id: str
     instance_type: str
     region_name: str
     repo: str
     cloudwatch_logs_group: str = ""
     gh_runner_tokens: list[str] = field(default_factory=list)
+    home_dir: str = ""
     iam_instance_profile: str = ""
     instance_name: str = ""
     key_name: str = ""
@@ -217,6 +219,7 @@ class StartAWS(CreateCloudInstance):
         except Exception as e:
             raise Exception("Error parsing user data template") from e
 
+
     def _modify_root_disk_size(self, client, params: dict) -> dict:
         """Modify the root disk size of the instance.
 
@@ -269,8 +272,6 @@ class StartAWS(CreateCloudInstance):
             raise ValueError("No GitHub runner tokens provided, cannot create instances.")
         if not self.runner_release:
             raise ValueError("No runner release provided, cannot create instances.")
-        if not self.home_dir:
-            raise ValueError("No home directory provided, cannot create instances.")
         if not self.image_id:
             raise ValueError("No image ID provided, cannot create instances.")
         if not self.instance_type:
@@ -278,6 +279,11 @@ class StartAWS(CreateCloudInstance):
         if not self.region_name:
             raise ValueError("No region name provided, cannot create instances.")
         ec2 = boto3.client("ec2", region_name=self.region_name)
+
+        # Use AUTO to let the instance detect its own home directory
+        if not self.home_dir:
+            self.home_dir = AUTO
+            print("Home directory will be auto-detected on instance")
         id_dict = {}
         for token in self.gh_runner_tokens:
             label = gh.GitHubInstance.generate_random_label()

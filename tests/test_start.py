@@ -5,6 +5,7 @@ from botocore.exceptions import WaiterError, ClientError
 from moto import mock_aws
 
 from ec2_gha.start import StartAWS
+from ec2_gha.defaults import AUTO
 
 
 @pytest.fixture(scope="function")
@@ -46,9 +47,13 @@ def test_build_user_data(aws, snapshot):
     user_data = aws._build_user_data(**params)
 
     # Verify all substitutions happened (no template variables remain)
-    template_vars = [ f'${k}' for k in params ]
+    # Note: $homedir appears in the auto-detection script but not as a template variable
+    template_vars = [ f'${k}' for k in params if k != 'homedir' ]
     for var in template_vars:
         assert var not in user_data, f"Template variable {var} was not substituted"
+
+    # Check that the actual homedir substitution happened correctly
+    assert 'homedir="/home/test-user"' in user_data or '"/home/test-user"' in user_data
 
     # Use snapshot to verify the entire output
     assert user_data == snapshot
@@ -77,9 +82,13 @@ def test_build_user_data_with_cloudwatch(aws, snapshot):
     user_data = aws._build_user_data(**params)
 
     # Verify all substitutions happened (no template variables remain)
-    template_vars = [ f'${k}' for k in params ]
+    # Note: $homedir appears in the auto-detection script but not as a template variable
+    template_vars = [ f'${k}' for k in params if k != 'homedir' ]
     for var in template_vars:
         assert var not in user_data, f"Template variable {var} was not substituted"
+
+    # Check that the actual homedir substitution happened correctly
+    assert 'homedir="/home/test-user"' in user_data or '"/home/test-user"' in user_data
 
     # Use snapshot to verify the entire output
     assert user_data == snapshot
@@ -172,6 +181,29 @@ def test_build_aws_params(complete_params):
             ],
         }
     ]
+
+
+def test_auto_home_dir(complete_params):
+    """Test that home_dir is set to AUTO when not provided"""
+    aws = StartAWS(**complete_params)
+    aws.home_dir = ""
+    aws.gh_runner_tokens = ["test-token"]
+    aws.runner_release = "https://example.com/runner.tar.gz"
+
+    with patch("boto3.client") as mock_client:
+        mock_ec2 = Mock()
+        mock_client.return_value = mock_ec2
+
+        # Mock the run_instances response
+        mock_ec2.run_instances.return_value = {
+            "Instances": [{"InstanceId": "i-123456"}]
+        }
+
+        result = aws.create_instances()
+
+        # Verify home_dir was set to AUTO
+        assert aws.home_dir == AUTO
+        assert "i-123456" in result
 
 
 def test_modify_root_disk_size(complete_params):
@@ -316,12 +348,26 @@ def test_create_instances_missing_release(aws):
         aws.create_instances()
 
 
-def test_create_instances_missing_home_dir(aws):
+def test_create_instances_sets_auto_home_dir(aws):
+    """Test that home_dir is set to AUTO when not provided"""
     aws.home_dir = ""
-    with pytest.raises(
-        ValueError, match="No home directory provided, cannot create instances."
-    ):
-        aws.create_instances()
+    aws.gh_runner_tokens = ["test-token"]
+    aws.runner_release = "https://example.com/runner.tar.gz"
+
+    with patch("boto3.client") as mock_client:
+        mock_ec2 = Mock()
+        mock_client.return_value = mock_ec2
+
+        # Mock the run_instances response
+        mock_ec2.run_instances.return_value = {
+            "Instances": [{"InstanceId": "i-123456"}]
+        }
+
+        result = aws.create_instances()
+
+        # Verify home_dir was set to AUTO for runtime detection
+        assert aws.home_dir == AUTO
+        assert "i-123456" in result
 
 
 def test_create_instances_missing_tokens(aws):

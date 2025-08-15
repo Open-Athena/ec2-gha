@@ -38,31 +38,28 @@ on:
         description: "CloudWatch Logs group name for streaming runner logs (leave empty to disable)"
         required: false
         type: string
-      ec2_launch_role:
-        description: "AWS role ARN to assume for EC2 operations (falls back to vars.EC2_LAUNCH_ROLE; one or the other is required)"
+      ec2_home_dir:
+        description: "Home directory on the AWS instance (falls back to vars.EC2_HOME_DIR, then auto-detection)"
         required: false
         type: string
       ec2_image_id:
-        description: "AWS AMI ID to use (falls back to vars.EC2_IMAGE_ID)"
+        description: "AWS AMI ID to use (falls back to vars.EC2_IMAGE_ID, then ami-00096836009b16a22 – Deep Learning OSS Nvidia Driver AMI GPU PyTorch)"
         required: false
         type: string
-        default: "ami-00096836009b16a22" # Deep Learning OSS Nvidia Driver AMI GPU PyTorch
-      ec2_instance_type:
-        description: "AWS instance type (falls back to vars.EC2_INSTANCE_TYPE)"
-        required: false
-        type: string
-        default: "g4dn.xlarge"
       ec2_instance_profile:
         description: "Instance profile name to attach to launched EC2 instance (required for CloudWatch logging)"
         required: false
         type: string
-      ec2_home_dir:
-        description: "Home directory on the AWS instance (falls back to vars.EC2_HOME_DIR)"
+      ec2_instance_type:
+        description: "AWS instance type (falls back to vars.EC2_INSTANCE_TYPE, then g4dn.xlarge)"
         required: false
         type: string
-        default: "/home/ubuntu"
       ec2_key_name:
         description: "Name of an EC2 key pair to use for SSH access (falls back to vars.EC2_KEY_NAME)"
+        required: false
+        type: string
+      ec2_launch_role:
+        description: "AWS role ARN to assume for EC2 operations (falls back to vars.EC2_LAUNCH_ROLE; one or the other is required)"
         required: false
         type: string
       ec2_root_device_size:
@@ -88,25 +85,21 @@ on:
         required: false
         type: string
       runner_grace_period:
-        description: "Grace period in seconds before terminating instance after last job completes (default 60)"
+        description: "Grace period in seconds before terminating instance after last job completes (falls back to vars.RUNNER_GRACE_PERIOD, then 60)"
         required: false
         type: string
-        default: "60"
       runner_initial_grace_period:
-        description: "Grace period in seconds before terminating instance if no jobs start (default 180)"
+        description: "Grace period in seconds before terminating instance if no jobs start (falls back to vars.RUNNER_INITIAL_GRACE_PERIOD, then 180)"
         required: false
         type: string
-        default: "180"
       runner_poll_interval:
-        description: "How often (in seconds) to check termination conditions (default 10)"
+        description: "How often (in seconds) to check termination conditions (falls back to vars.RUNNER_POLL_INTERVAL, then 10)"
         required: false
         type: string
-        default: "10"
       runner_registration_timeout:
-        description: "Maximum seconds to wait for runner to register with GitHub (default 300 = 5 minutes)"
+        description: "Maximum seconds to wait for runner to register with GitHub (falls back to vars.RUNNER_REGISTRATION_TIMEOUT, then 300 = 5 minutes)"
         required: false
         type: string
-        default: "300"
       ssh_pubkey:
         description: "SSH public key to add to authorized_keys (falls back to vars.SSH_PUBKEY)"
         required: false
@@ -154,8 +147,8 @@ jobs:
           aws_region: ${{ inputs.aws_region }}
           aws_tags: ${{ inputs.aws_tags }}
           cloudwatch_logs_group: ${{ inputs.cloudwatch_logs_group || vars.CLOUDWATCH_LOGS_GROUP }}
-          ec2_image_id: ${{ inputs.ec2_image_id || vars.EC2_IMAGE_ID }}
-          ec2_instance_type: ${{ inputs.ec2_instance_type || vars.EC2_INSTANCE_TYPE }}
+          ec2_image_id: ${{ inputs.ec2_image_id || vars.EC2_IMAGE_ID || 'ami-00096836009b16a22' }}
+          ec2_instance_type: ${{ inputs.ec2_instance_type || vars.EC2_INSTANCE_TYPE || 'g4dn.xlarge' }}
           ec2_instance_profile: ${{ inputs.ec2_instance_profile || vars.EC2_INSTANCE_PROFILE }}
           ec2_home_dir: ${{ inputs.ec2_home_dir || vars.EC2_HOME_DIR }}
           ec2_key_name: ${{ inputs.ec2_key_name || vars.EC2_KEY_NAME }}
@@ -164,10 +157,10 @@ jobs:
           ec2_userdata: ${{ inputs.ec2_userdata }}
           instance_name: ${{ inputs.instance_name }}
           max_instance_lifetime: ${{ inputs.max_instance_lifetime || vars.MAX_INSTANCE_LIFETIME || '360' }}
-          runner_initial_grace_period: ${{ inputs.runner_initial_grace_period }}
-          runner_grace_period: ${{ inputs.runner_grace_period }}
-          runner_poll_interval: ${{ inputs.runner_poll_interval }}
-          runner_registration_timeout: ${{ inputs.runner_registration_timeout }}
+          runner_initial_grace_period: ${{ inputs.runner_initial_grace_period || vars.RUNNER_INITIAL_GRACE_PERIOD || '180' }}
+          runner_grace_period: ${{ inputs.runner_grace_period || vars.RUNNER_GRACE_PERIOD || '60' }}
+          runner_poll_interval: ${{ inputs.runner_poll_interval || vars.RUNNER_POLL_INTERVAL || '10' }}
+          runner_registration_timeout: ${{ inputs.runner_registration_timeout || vars.RUNNER_REGISTRATION_TIMEOUT || '300' }}
           ssh_pubkey: ${{ inputs.ssh_pubkey || vars.SSH_PUBKEY }}
         env:
           GH_PAT: ${{ secrets.GH_SA_TOKEN }}

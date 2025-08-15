@@ -3,6 +3,41 @@ set -e
 
 $userdata
 
+# Determine home directory if not specified or set to AUTO
+if [ -z "$homedir" ] || [ "$homedir" = "AUTO" ]; then
+    # Try to find the default non-root user's home directory
+    # Check for common cloud-init created users
+    for user in ubuntu ec2-user centos admin debian fedora alpine arch; do
+        if id "$$user" &>/dev/null; then
+            homedir="/home/$$user"
+            echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Auto-detected home directory for user $$user: $$homedir"
+            break
+        fi
+    done
+
+    # Fallback if no standard user found
+    if [ -z "$homedir" ] || [ "$homedir" = "AUTO" ]; then
+        # Get the first non-root user's home directory that actually exists
+        homedir=$$(getent passwd | awk -F: '$$3 >= 1000 && $$3 < 65534 && $$6 ~ /^\/home\// {print $$6}' | while read dir; do
+            if [ -d "$$dir" ]; then
+                echo "$$dir"
+                break
+            fi
+        done)
+
+        if [ -z "$homedir" ]; then
+            homedir="/home/ec2-user"  # Ultimate fallback
+            echo "[$$(date '+%Y-%m-%d %H:%M:%S')] No suitable user found, using fallback: $$homedir"
+        else
+            # Use stat to get the actual owner of the directory
+            owner=$$(stat -c "%U" "$$homedir" 2>/dev/null || stat -f "%Su" "$$homedir" 2>/dev/null)
+            echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Detected home directory for user $$owner: $$homedir"
+        fi
+    fi
+else
+    echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Using specified home directory: $$homedir"
+fi
+
 # Set up maximum lifetime timeout - do this early to ensure cleanup
 MAX_LIFETIME_MINUTES=$max_instance_lifetime
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Setting up maximum lifetime timeout: $${MAX_LIFETIME_MINUTES} minutes"
