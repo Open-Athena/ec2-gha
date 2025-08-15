@@ -1,4 +1,8 @@
 #!/bin/bash
+# Debug: Log to syslog to see what's happening
+logger "EC2-GHA: Starting userdata script"
+echo "EC2-GHA: Starting userdata script" >&2
+
 set -e
 
 # Set up error handling and failsafe termination
@@ -23,7 +27,13 @@ terminate_instance() {
 trap 'terminate_instance "Setup script failed with error on line $$LINENO"' ERR
 
 # Set up registration timeout failsafe
-REGISTRATION_TIMEOUT=$runner_registration_timeout
+REGISTRATION_TIMEOUT="$runner_registration_timeout"
+# Validate timeout is a number, default to 360 if not
+if ! [[ "$$REGISTRATION_TIMEOUT" =~ ^[0-9]+$$ ]]; then
+    logger "EC2-GHA: Invalid timeout '$$REGISTRATION_TIMEOUT', using default 360"
+    REGISTRATION_TIMEOUT=360
+fi
+logger "EC2-GHA: Registration timeout set to $$REGISTRATION_TIMEOUT seconds"
 (
     echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Watchdog: Starting $$REGISTRATION_TIMEOUT second timeout" >> /var/log/runner-setup.log
     sleep $$REGISTRATION_TIMEOUT
