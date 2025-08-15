@@ -3,8 +3,11 @@ set -e
 
 $userdata
 
+# Initialize homedir from template variable
+homedir="$homedir"
+
 # Determine home directory if not specified or set to AUTO
-if [ -z "$homedir" ] || [ "$homedir" = "AUTO" ]; then
+if [ -z "$$homedir" ] || [ "$$homedir" = "AUTO" ]; then
     # Try to find the default non-root user's home directory
     # Check for common cloud-init created users
     for user in ubuntu ec2-user centos admin debian fedora alpine arch; do
@@ -16,7 +19,7 @@ if [ -z "$homedir" ] || [ "$homedir" = "AUTO" ]; then
     done
 
     # Fallback if no standard user found
-    if [ -z "$homedir" ] || [ "$homedir" = "AUTO" ]; then
+    if [ -z "$$homedir" ] || [ "$$homedir" = "AUTO" ]; then
         # Get the first non-root user's home directory that actually exists
         homedir=$$(getent passwd | awk -F: '$$3 >= 1000 && $$3 < 65534 && $$6 ~ /^\/home\// {print $$6}' | while read dir; do
             if [ -d "$$dir" ]; then
@@ -25,7 +28,7 @@ if [ -z "$homedir" ] || [ "$homedir" = "AUTO" ]; then
             fi
         done)
 
-        if [ -z "$homedir" ]; then
+        if [ -z "$$homedir" ]; then
             homedir="/home/ec2-user"  # Ultimate fallback
             echo "[$$(date '+%Y-%m-%d %H:%M:%S')] No suitable user found, using fallback: $$homedir"
         else
@@ -102,13 +105,13 @@ if [ "$cloudwatch_logs_group" != "" ]; then
             "timezone": "UTC"
           },
           {
-            "file_path": "$homedir/_diag/Runner_**.log",
+            "file_path": "$$homedir/_diag/Runner_**.log",
             "log_group_name": "$cloudwatch_logs_group",
             "log_stream_name": "{instance_id}/runner-diag",
             "timezone": "UTC"
           },
           {
-            "file_path": "$homedir/_diag/Worker_**.log",
+            "file_path": "$$homedir/_diag/Worker_**.log",
             "log_group_name": "$cloudwatch_logs_group",
             "log_stream_name": "{instance_id}/worker-diag",
             "timezone": "UTC"
@@ -136,19 +139,19 @@ if [ -n "$ssh_pubkey" ]; then
     echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Configuring SSH access"
 
     # Determine the default user based on the home directory owner
-    DEFAULT_USER=$$(stat -c "%U" "$homedir" 2>/dev/null || echo "root")
+    DEFAULT_USER=$$(stat -c "%U" "$$homedir" 2>/dev/null || echo "root")
 
     # Create .ssh directory if it doesn't exist
-    mkdir -p "$homedir/.ssh"
-    chmod 700 "$homedir/.ssh"
+    mkdir -p "$$homedir/.ssh"
+    chmod 700 "$$homedir/.ssh"
 
     # Add the public key to authorized_keys
-    echo "$ssh_pubkey" >> "$homedir/.ssh/authorized_keys"
-    chmod 600 "$homedir/.ssh/authorized_keys"
+    echo "$ssh_pubkey" >> "$$homedir/.ssh/authorized_keys"
+    chmod 600 "$$homedir/.ssh/authorized_keys"
 
     # Set proper ownership
     if [ "$$DEFAULT_USER" != "root" ]; then
-        chown -R "$$DEFAULT_USER:$$DEFAULT_USER" "$homedir/.ssh"
+        chown -R "$$DEFAULT_USER:$$DEFAULT_USER" "$$homedir/.ssh"
     fi
 
     echo "[$$(date '+%Y-%m-%d %H:%M:%S')] SSH key added for user $$DEFAULT_USER"
@@ -170,8 +173,8 @@ echo "  Instance ID: $${INSTANCE_ID}"
 echo "  Region: $${REGION}"
 echo "  Availability zone: $${AZ}"
 
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Working directory: $homedir"
-cd "$homedir"
+echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Working directory: $$homedir"
+cd "$$homedir"
 echo "$script" > pre-runner-script.sh
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Running pre-runner script"
 source pre-runner-script.sh
@@ -180,7 +183,7 @@ export RUNNER_ALLOW_RUNASROOT=1
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Downloading runner from: $runner_release"
 curl -L $runner_release -o runner.tar.gz
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Extracting runner"
-# `--no-overwrite-dir` is important, otherwise `$homedir` ends up `chown`'d to `1001:docker`, and `sshd` will refuse connection attempts to `$homedir`
+# `--no-overwrite-dir` is important, otherwise `$$homedir` ends up `chown`'d to `1001:docker`, and `sshd` will refuse connection attempts to `$$homedir`
 tar --no-overwrite-dir -xzf runner.tar.gz
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Setting up job tracking scripts"
 # Create minimal job tracking scripts inline
@@ -269,9 +272,9 @@ elif [ "$${IDLE_TIME}" -gt "$${CURRENT_GRACE_PERIOD}" ]; then
     echo "[$$(date)] No running jobs and no activity for $${IDLE_TIME} seconds, proceeding with termination"
 
     # Try to remove runner from GitHub first
-    if [ -f "$homedir/config.sh" ]; then
+    if [ -f "$$homedir/config.sh" ]; then
         echo "[$$(date)] Removing runner from GitHub"
-        cd "$homedir"
+        cd "$$homedir"
         # Stop the runner service
         RUNNER_PID=$$(pgrep -f "Runner.Listener" | head -1)
         if [ -n "$${RUNNER_PID}" ]; then
@@ -312,7 +315,7 @@ chmod +x /usr/local/bin/job-started-hook.sh /usr/local/bin/job-completed-hook.sh
 # Set up runner hooks
 echo "ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/job-started-hook.sh" > .env
 echo "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/job-completed-hook.sh" >> .env
-echo "RUNNER_HOME=$homedir" >> .env
+echo "RUNNER_HOME=$$homedir" >> .env
 echo "RUNNER_GRACE_PERIOD=$runner_grace_period" >> .env
 echo "RUNNER_INITIAL_GRACE_PERIOD=$runner_initial_grace_period" >> .env
 echo "RUNNER_POLL_INTERVAL=$runner_poll_interval" >> .env
@@ -392,10 +395,10 @@ touch /var/run/github-runner-started
 # Ensure CloudWatch agent can read diagnostic logs
 # The cwagent user needs to traverse into $homedir to reach _diag
 # Make $homedir world-executable (but not readable) so cwagent can traverse it
-chmod o+x $homedir
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Made $homedir traversable for CloudWatch agent"
+chmod o+x $$homedir
+echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Made $$homedir traversable for CloudWatch agent"
 # Create _diag directory if it doesn't exist
-mkdir -p $homedir/_diag
+mkdir -p $$homedir/_diag
 # The _diag files are already world-readable by default, just ensure the directory is too
-chmod 755 $homedir/_diag
+chmod 755 $$homedir/_diag
 ./run.sh
