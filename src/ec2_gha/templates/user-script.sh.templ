@@ -25,13 +25,19 @@ trap 'terminate_instance "Setup script failed with error on line $$LINENO"' ERR
 # Set up registration timeout failsafe (default 5 minutes if not specified)
 REGISTRATION_TIMEOUT=$${runner_registration_timeout:-300}
 (
+    echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Watchdog: Starting $$REGISTRATION_TIMEOUT second timeout" >> /var/log/runner-setup.log
     sleep $$REGISTRATION_TIMEOUT
     if [ ! -f /var/run/github-runner-registered ]; then
+        echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Watchdog: Registration marker not found after timeout" >> /var/log/runner-setup.log
         terminate_instance "Runner failed to register within $$REGISTRATION_TIMEOUT seconds"
+    else
+        echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Watchdog: Registration marker found, exiting normally" >> /var/log/runner-setup.log
     fi
 ) &
 REGISTRATION_WATCHDOG_PID=$$!
 echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Watchdog PID: $$REGISTRATION_WATCHDOG_PID"
+# Save watchdog PID to file so it survives exec redirect
+echo $$REGISTRATION_WATCHDOG_PID > /var/run/github-runner-watchdog.pid
 
 $userdata
 
@@ -346,10 +352,19 @@ export RUNNER_TOKEN="$token"
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Runner registered successfully"
 
 # Mark registration as complete and kill the watchdog
+echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Creating registration marker file at /var/run/github-runner-registered"
 touch /var/run/github-runner-registered
-if [ -n "$${REGISTRATION_WATCHDOG_PID:-}" ]; then
-    kill $$REGISTRATION_WATCHDOG_PID 2>/dev/null || true
-    echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Killed registration watchdog (PID: $$REGISTRATION_WATCHDOG_PID)"
+ls -la /var/run/github-runner-registered
+# Read watchdog PID from file (survives exec redirect)
+if [ -f /var/run/github-runner-watchdog.pid ]; then
+    WATCHDOG_PID=$$(cat /var/run/github-runner-watchdog.pid)
+    if kill -0 $$WATCHDOG_PID 2>/dev/null; then
+        kill $$WATCHDOG_PID 2>/dev/null || true
+        echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Killed registration watchdog (PID: $$WATCHDOG_PID)"
+    else
+        echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Watchdog process $$WATCHDOG_PID already terminated"
+    fi
+    rm -f /var/run/github-runner-watchdog.pid
 fi
 
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Starting runner"
