@@ -30,6 +30,8 @@ jobs:
     uses: ./.github/workflows/runner.yml
     secrets: inherit
     with:
+      ec2_instance_type: g4dn.xlarge
+      ec2_image_id: ami-00096836009b16a22  # Deep Learning OSS Nvidia Driver AMI GPU PyTorch
       ssh_pubkey: ${{ inputs.ssh_pubkey }}
 
   gpu-workload:

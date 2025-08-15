@@ -18,6 +18,8 @@ from datetime import datetime, timezone, timedelta
 from functools import partial
 from typing import Dict, List, Optional
 
+from dateutil import parser as date_parser
+
 err = partial(print, file=sys.stderr)
 
 def run_command(cmd: List[str]) -> Optional[str]:
@@ -77,35 +79,14 @@ def get_log_events(log_group: str, log_stream: str, limit: int = 100, start_from
 
 def parse_timestamp(ts_str: str) -> Optional[datetime]:
     """Parse various timestamp formats and ensure timezone is set."""
-
-    # Try log format: "Thu Aug 14 00:29:25 UTC 2025"
-    # Note: strptime with %Z doesn't set tzinfo, so we need to handle UTC manually
-    if " UTC " in ts_str:
-        try:
-            ts_str_no_tz = ts_str.replace(" UTC ", " ")
-            return datetime.strptime(ts_str_no_tz, "%a %b %d %H:%M:%S %Y").replace(tzinfo=timezone.utc)
-        except:
-            pass
-
-    # Try format: "2025-08-14 17:37:20"
     try:
-        dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
-        # Always add UTC timezone for consistency
-        return dt.replace(tzinfo=timezone.utc)
-    except:
-        pass
-
-    # Try ISO format with timezone
-    try:
-        dt = datetime.fromisoformat(ts_str)
-        # If no timezone, add UTC
+        dt = date_parser.parse(ts_str)
+        # If no timezone info, assume UTC
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt
     except:
-        pass
-
-    return None
+        return None
 
 
 def extract_timestamp_from_log(message: str) -> Optional[datetime]:

@@ -5,14 +5,14 @@ permissions:
   id-token: write
   contents: read
 jobs:
-  demo-00-minimal:
-    uses: ./.github/workflows/demo-00-minimal.yml
+  demo-gpu-minimal:
+    uses: ./.github/workflows/demo-gpu-minimal.yml
     secrets: inherit
   demo-job-seq:
     uses: ./.github/workflows/demo-job-seq.yml
     secrets: inherit
-  demo-gpu-dbg:
-    uses: ./.github/workflows/demo-gpu-dbg.yml
+  demo-gpu:
+    uses: ./.github/workflows/demo-gpu.yml
     secrets: inherit
   demo-archs:
     uses: ./.github/workflows/demo-archs.yml

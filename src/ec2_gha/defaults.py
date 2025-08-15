@@ -8,8 +8,8 @@ RUNNER_POLL_INTERVAL = "10"    # 10 seconds
 RUNNER_REGISTRATION_TIMEOUT = "300"  # 5 minutes (in seconds)
 
 # EC2 instance defaults
-EC2_IMAGE_ID = "ami-00096836009b16a22"  # Deep Learning OSS Nvidia Driver AMI GPU PyTorch
-EC2_INSTANCE_TYPE = "g4dn.xlarge"
+EC2_IMAGE_ID = "ami-0e86e20dae9224db8"  # Ubuntu 24.04 LTS x86_64
+EC2_INSTANCE_TYPE = "t3.medium"
 
 # Instance naming default template
 INSTANCE_NAME = "$repo/$name#$run_number"

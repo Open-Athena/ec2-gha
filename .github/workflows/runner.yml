@@ -43,7 +43,7 @@ on:
         required: false
         type: string
       ec2_image_id:
-        description: "AWS AMI ID to use (falls back to vars.EC2_IMAGE_ID, then ami-00096836009b16a22 – Deep Learning OSS Nvidia Driver AMI GPU PyTorch)"
+        description: "AWS AMI ID to use (falls back to vars.EC2_IMAGE_ID, then ami-0e86e20dae9224db8 – Ubuntu 24.04 LTS)"
         required: false
         type: string
       ec2_instance_profile:
@@ -51,7 +51,7 @@ on:
         required: false
         type: string
       ec2_instance_type:
-        description: "AWS instance type (falls back to vars.EC2_INSTANCE_TYPE, then g4dn.xlarge)"
+        description: "AWS instance type (falls back to vars.EC2_INSTANCE_TYPE, then t3.medium)"
         required: false
         type: string
       ec2_key_name:
@@ -147,8 +147,8 @@ jobs:
           aws_region: ${{ inputs.aws_region }}
           aws_tags: ${{ inputs.aws_tags }}
           cloudwatch_logs_group: ${{ inputs.cloudwatch_logs_group || vars.CLOUDWATCH_LOGS_GROUP }}
-          ec2_image_id: ${{ inputs.ec2_image_id || vars.EC2_IMAGE_ID || 'ami-00096836009b16a22' }}
-          ec2_instance_type: ${{ inputs.ec2_instance_type || vars.EC2_INSTANCE_TYPE || 'g4dn.xlarge' }}
+          ec2_image_id: ${{ inputs.ec2_image_id || vars.EC2_IMAGE_ID || 'ami-0e86e20dae9224db8' }}
+          ec2_instance_type: ${{ inputs.ec2_instance_type || vars.EC2_INSTANCE_TYPE || 't3.medium' }}
           ec2_instance_profile: ${{ inputs.ec2_instance_profile || vars.EC2_INSTANCE_PROFILE }}
           ec2_home_dir: ${{ inputs.ec2_home_dir || vars.EC2_HOME_DIR }}
           ec2_key_name: ${{ inputs.ec2_key_name || vars.EC2_KEY_NAME }}

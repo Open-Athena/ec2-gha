@@ -20,13 +20,13 @@ inputs:
     description: "Home directory on the AWS instance (falls back to vars.EC2_HOME_DIR, then auto-detection)"
     required: false
   ec2_image_id:
-    description: "AWS AMI ID to use (falls back to vars.EC2_IMAGE_ID, then ami-00096836009b16a22 – Deep Learning OSS Nvidia Driver AMI GPU PyTorch)"
+    description: "AWS AMI ID to use (falls back to vars.EC2_IMAGE_ID, then ami-0e86e20dae9224db8 – Ubuntu 24.04 LTS)"
     required: false
   ec2_instance_profile:
     description: "Instance profile name to attach to launched EC2 instance (required for CloudWatch logging)"
     required: false
   ec2_instance_type:
-    description: "AWS instance type (falls back to vars.EC2_INSTANCE_TYPE, then g4dn.xlarge)"
+    description: "AWS instance type (falls back to vars.EC2_INSTANCE_TYPE, then t3.medium)"
     required: false
   ec2_key_name:
     description: "Name of an EC2 key pair to use for SSH access (falls back to vars.EC2_KEY_NAME)"
