@@ -9,7 +9,13 @@ trap 'logger "EC2-GHA: Script failed at line $$LINENO with exit code $$?"' ERR
 set -e
 
 # Set up error handling and failsafe termination
-INSTANCE_ID=$$(curl -s http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null || echo "unknown")
+# Get instance ID early for error messages (IMDSv2 compatible)
+IMDS_TOKEN_EARLY=$$(curl -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 300" http://169.254.169.254/latest/api/token 2>/dev/null || true)
+if [ -n "$$IMDS_TOKEN_EARLY" ]; then
+    INSTANCE_ID=$$(curl -s -H "X-aws-ec2-metadata-token: $$IMDS_TOKEN_EARLY" http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null || echo "unknown")
+else
+    INSTANCE_ID=$$(curl -s http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null || echo "unknown")
+fi
 
 terminate_instance() {
     local reason="$$1"
@@ -209,10 +215,21 @@ if [ -n "$ssh_pubkey" ]; then
 fi
 
 # Fetch instance metadata before redirecting output
-INSTANCE_TYPE=$$(curl -s http://169.254.169.254/latest/meta-data/instance-type || echo "unknown")
-INSTANCE_ID=$$(curl -s http://169.254.169.254/latest/meta-data/instance-id || echo "unknown")
-REGION=$$(curl -s http://169.254.169.254/latest/meta-data/placement/region || echo "unknown")
-AZ=$$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone || echo "unknown")
+# Support both IMDSv1 and IMDSv2
+IMDS_TOKEN=$$(curl -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 300" http://169.254.169.254/latest/api/token 2>/dev/null || true)
+if [ -n "$$IMDS_TOKEN" ]; then
+    # IMDSv2
+    INSTANCE_TYPE=$$(curl -s -H "X-aws-ec2-metadata-token: $$IMDS_TOKEN" http://169.254.169.254/latest/meta-data/instance-type || echo "unknown")
+    INSTANCE_ID=$$(curl -s -H "X-aws-ec2-metadata-token: $$IMDS_TOKEN" http://169.254.169.254/latest/meta-data/instance-id || echo "unknown")
+    REGION=$$(curl -s -H "X-aws-ec2-metadata-token: $$IMDS_TOKEN" http://169.254.169.254/latest/meta-data/placement/region || echo "unknown")
+    AZ=$$(curl -s -H "X-aws-ec2-metadata-token: $$IMDS_TOKEN" http://169.254.169.254/latest/meta-data/placement/availability-zone || echo "unknown")
+else
+    # IMDSv1 fallback
+    INSTANCE_TYPE=$$(curl -s http://169.254.169.254/latest/meta-data/instance-type || echo "unknown")
+    INSTANCE_ID=$$(curl -s http://169.254.169.254/latest/meta-data/instance-id || echo "unknown")
+    REGION=$$(curl -s http://169.254.169.254/latest/meta-data/placement/region || echo "unknown")
+    AZ=$$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone || echo "unknown")
+fi
 
 # Redirect runner setup logs to a file for CloudWatch
 exec >> /var/log/runner-setup.log 2>&1
@@ -326,9 +343,18 @@ systemctl daemon-reload
 systemctl enable runner-termination-check.timer
 systemctl start runner-termination-check.timer
 
-# Get instance metadata for descriptive runner name
-INSTANCE_ID=$$(wget -q -O - http://169.254.169.254/latest/meta-data/instance-id || echo "unknown")
-INSTANCE_TYPE=$$(wget -q -O - http://169.254.169.254/latest/meta-data/instance-type || echo "unknown")
+# Get instance metadata for descriptive runner name (IMDSv2 compatible)
+# Reuse token if available, otherwise get a new one
+if [ -z "$$IMDS_TOKEN" ]; then
+    IMDS_TOKEN=$$(curl -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 300" http://169.254.169.254/latest/api/token 2>/dev/null || true)
+fi
+if [ -n "$$IMDS_TOKEN" ]; then
+    INSTANCE_ID=$$(curl -s -H "X-aws-ec2-metadata-token: $$IMDS_TOKEN" http://169.254.169.254/latest/meta-data/instance-id || echo "unknown")
+    INSTANCE_TYPE=$$(curl -s -H "X-aws-ec2-metadata-token: $$IMDS_TOKEN" http://169.254.169.254/latest/meta-data/instance-type || echo "unknown")
+else
+    INSTANCE_ID=$$(curl -s http://169.254.169.254/latest/meta-data/instance-id || echo "unknown")
+    INSTANCE_TYPE=$$(curl -s http://169.254.169.254/latest/meta-data/instance-type || echo "unknown")
+fi
 
 # Create runner name with just the instance ID for uniqueness
 RUNNER_NAME="ec2-$${INSTANCE_ID}"
@@ -361,7 +387,9 @@ echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Runner name: $${RUNNER_NAME}"
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Labels: $${ALL_LABELS}"
 # Export token for error handler
 export RUNNER_TOKEN="$token"
-./config.sh --url https://github.com/$repo --token $token --labels "$${ALL_LABELS}" --name "$${RUNNER_NAME}" --disableupdate
+# Use --replace to force replacement if a runner with the same name exists
+# This prevents interactive prompts that would lose our labels
+./config.sh --url https://github.com/$repo --token $token --labels "$${ALL_LABELS}" --name "$${RUNNER_NAME}" --disableupdate --replace
 echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Runner registered successfully"
 
 # Mark registration as complete and kill the watchdog
