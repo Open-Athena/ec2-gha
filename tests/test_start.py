@@ -9,24 +9,30 @@ from ec2_gha.defaults import AUTO
 
 
 @pytest.fixture(scope="function")
-def aws():
+def base_aws_params():
+    """Base parameters for StartAWS initialization"""
+    return {
+        "gh_runner_tokens": ["testing"],
+        "home_dir": "/home/ec2-user",
+        "image_id": "ami-0772db4c976d21e9b",
+        "instance_type": "t2.micro",
+        "region_name": "us-east-1",
+        "repo": "omsf-eco-infra/awsinfratesting",
+        "runner_grace_period": "120",
+        "runner_release": "testing",
+    }
+
+
+@pytest.fixture(scope="function")
+def aws(base_aws_params):
     with mock_aws():
-        params = {
-            "gh_runner_tokens": ["testing"],
-            "home_dir": "/home/ec2-user",
-            "image_id": "ami-0772db4c976d21e9b",
-            "instance_type": "t2.micro",
-            "region_name": "us-east-1",
-            "repo": "omsf-eco-infra/awsinfratesting",
-            "runner_grace_period": "120",
-            "runner_release": "testing",
-        }
-        yield StartAWS(**params)
+        yield StartAWS(**base_aws_params)
 
 
-def test_build_user_data(aws, snapshot):
-    """Test that template parameters are correctly substituted using snapshot testing"""
-    params = {
+@pytest.fixture(scope="function")
+def base_user_data_params():
+    """Base parameters for user data building"""
+    return {
         "cloudwatch_logs_group": "",  # Empty = disabled
         "github_run_id": "123456789",
         "github_run_number": "42",
@@ -39,58 +45,37 @@ def test_build_user_data(aws, snapshot):
         "runner_initial_grace_period": "181",
         "runner_poll_interval": "11",
         "runner_release": "https://example.com/runner.tar.gz",
+        "runner_registration_timeout": "300",
         "script": "echo 'test script'",
         "ssh_pubkey": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host",
         "token": "test-token-xyz",
         "userdata": "echo 'custom userdata'",
     }
-    user_data = aws._build_user_data(**params)
 
-    # Verify all substitutions happened (no template variables remain)
-    # Note: $homedir appears in the auto-detection script but not as a template variable
-    template_vars = [ f'${k}' for k in params if k != 'homedir' ]
-    for var in template_vars:
-        assert var not in user_data, f"Template variable {var} was not substituted"
 
-    # Check that the actual homedir substitution happened correctly
-    assert 'homedir="/home/test-user"' in user_data or '"/home/test-user"' in user_data
+def test_build_user_data(aws, base_user_data_params, snapshot):
+    """Test that template parameters are correctly substituted using snapshot testing"""
+    user_data = aws._build_user_data(**base_user_data_params)
 
     # Use snapshot to verify the entire output
+    # This comprehensively checks that all template substitutions happened correctly
     assert user_data == snapshot
 
 
-def test_build_user_data_with_cloudwatch(aws, snapshot):
+def test_build_user_data_with_cloudwatch(aws, base_user_data_params, snapshot):
     """Test user data with CloudWatch Logs enabled using snapshot testing"""
-    params = {
+    params = base_user_data_params | {
         "cloudwatch_logs_group": "/aws/ec2/github-runners",
-        "github_run_id": "123456789",
-        "github_run_number": "42",
-        "github_workflow": "test-workflow",
-        "homedir": "/home/test-user",
-        "labels": "test-label",
-        "max_instance_lifetime": "360",
-        "repo": "test-org/test-repo",
         "runner_grace_period": "60",
         "runner_initial_grace_period": "180",
         "runner_poll_interval": "10",
-        "runner_release": "https://example.com/runner.tar.gz",
-        "script": "echo 'test script'",
         "ssh_pubkey": "",
-        "token": "test-token-xyz",
         "userdata": "",
     }
     user_data = aws._build_user_data(**params)
 
-    # Verify all substitutions happened (no template variables remain)
-    # Note: $homedir appears in the auto-detection script but not as a template variable
-    template_vars = [ f'${k}' for k in params if k != 'homedir' ]
-    for var in template_vars:
-        assert var not in user_data, f"Template variable {var} was not substituted"
-
-    # Check that the actual homedir substitution happened correctly
-    assert 'homedir="/home/test-user"' in user_data or '"/home/test-user"' in user_data
-
     # Use snapshot to verify the entire output
+    # This comprehensively checks that all template substitutions happened correctly
     assert user_data == snapshot
 
 
@@ -109,16 +94,12 @@ def test_build_user_data_missing_params(aws):
 
 
 @pytest.fixture(scope="function")
-def complete_params():
-    params = {
+def complete_params(base_aws_params):
+    """Extended parameters including AWS-specific configurations"""
+    return base_aws_params | {
         "gh_runner_tokens": ["test"],
-        "home_dir": "/home/ec2-user",
         "iam_instance_profile": "test",
-        "image_id": "ami-0772db4c976d21e9b",
-        "instance_type": "t2.micro",
         "labels": "",
-        "region_name": "us-east-1",
-        "repo": "omsf-eco-infra/awsinfratesting",
         "root_device_size": 100,
         "runner_release": "test.tar.gz",
         "security_group_id": "test",
@@ -128,20 +109,28 @@ def complete_params():
             {"Key": "Owner", "Value": "test"},
         ],
     }
-    yield params
 
 
-@patch.dict('os.environ', {
-    'GITHUB_REPOSITORY': 'Open-Athena/ec2-gha',
-    'GITHUB_WORKFLOW': 'CI',
-    'GITHUB_SERVER_URL': 'https://github.com',
-    'GITHUB_RUN_ID': '16725250800'
-})
-def test_build_aws_params(complete_params):
-    user_data_params = {
+@pytest.fixture(scope="function")
+def github_env():
+    """Common GitHub environment variables for tests"""
+    return {
+        'GITHUB_REPOSITORY': 'Open-Athena/ec2-gha',
+        'GITHUB_WORKFLOW': 'CI',
+        'GITHUB_WORKFLOW_REF': 'Open-Athena/ec2-gha/.github/workflows/test.yml@refs/heads/main',
+        'GITHUB_RUN_NUMBER': '42',
+        'GITHUB_SERVER_URL': 'https://github.com',
+        'GITHUB_RUN_ID': '16725250800'
+    }
+
+
+@pytest.fixture(scope="function")
+def aws_params_user_data():
+    """User data params for AWS params tests"""
+    return {
         "cloudwatch_logs_group": "",
         "github_run_id": "16725250800",
-        "github_run_number": "1",
+        "github_run_number": "42",
         "github_workflow": "CI",
         "homedir": "/home/ec2-user",
         "labels": "label",
@@ -151,42 +140,68 @@ def test_build_aws_params(complete_params):
         "runner_initial_grace_period": "181",
         "runner_poll_interval": "11",
         "runner_release": "test.tar.gz",
+        "runner_registration_timeout": "300",
         "script": "echo 'Hello, World!'",
         "ssh_pubkey": "",
         "token": "test",
         "userdata": "",
     }
-    aws = StartAWS(**complete_params)
-    params = aws._build_aws_params(user_data_params)
 
-    # Test structure without checking exact UserData content
-    assert params["ImageId"] == "ami-0772db4c976d21e9b"
-    assert params["InstanceType"] == "t2.micro"
-    assert params["MinCount"] == 1
-    assert params["MaxCount"] == 1
-    assert params["SubnetId"] == "test"
-    assert params["SecurityGroupIds"] == ["test"]
-    assert params["IamInstanceProfile"] == {"Name": "test"}
-    assert params["InstanceInitiatedShutdownBehavior"] == "terminate"
-    assert "UserData" in params
-    assert params["TagSpecifications"] == [
-        {
-            "ResourceType": "instance",
-            "Tags": [
-                {"Key": "Name", "Value": "test"},
-                {"Key": "Owner", "Value": "test"},
-                {"Key": "Repository", "Value": "Open-Athena/ec2-gha"},
-                {"Key": "Workflow", "Value": "CI"},
-                {"Key": "URL", "Value": "https://github.com/Open-Athena/ec2-gha/actions/runs/16725250800"},
-            ],
-        }
-    ]
+
+def test_build_aws_params_with_idx(complete_params, aws_params_user_data, github_env, snapshot):
+    """Test _build_aws_params with idx parameter for multi-instance scenarios"""
+    with patch.dict('os.environ', github_env):
+        user_data_params = aws_params_user_data
+        # Remove existing tags to test auto-generated Name tag
+        params_without_tags = complete_params.copy()
+        params_without_tags['tags'] = []
+        params_without_tags['instance_name'] = '$repo/$name-$idx (#$run_number)'
+        aws = StartAWS(**params_without_tags)
+
+        # Test with idx=0
+        params = aws._build_aws_params(user_data_params, idx=0)
+
+        # Check that the Name tag includes the index
+        tags = params["TagSpecifications"][0]["Tags"]
+        name_tag = next(tag for tag in tags if tag["Key"] == "Name")
+        assert name_tag["Value"] == "ec2-gha/test-0 (#42)"
+
+        # Test with idx=1
+        params = aws._build_aws_params(user_data_params, idx=1)
+        tags = params["TagSpecifications"][0]["Tags"]
+        name_tag = next(tag for tag in tags if tag["Key"] == "Name")
+        assert name_tag["Value"] == "ec2-gha/test-1 (#42)"
+
+
+def test_build_aws_params(complete_params, aws_params_user_data, github_env, snapshot):
+    """Test _build_aws_params without idx parameter"""
+    # Slightly modified github_env without WORKFLOW_REF
+    env = github_env.copy()
+    del env['GITHUB_WORKFLOW_REF']
+
+    with patch.dict('os.environ', env):
+        user_data_params = aws_params_user_data | {"github_run_number": "1"}
+        aws = StartAWS(**complete_params)
+        params = aws._build_aws_params(user_data_params)
+
+        # Don't include UserData in snapshot since it's tested separately
+        # Create a copy without UserData for snapshot comparison
+        params_for_snapshot = {k: v for k, v in params.items() if k != 'UserData'}
+
+        # Use snapshot to verify the structure
+        assert params_for_snapshot == snapshot
+
+        # Just verify UserData exists and is a non-empty string
+        assert "UserData" in params
+        assert isinstance(params["UserData"], str)
+        assert len(params["UserData"]) > 0
 
 
 def test_auto_home_dir(complete_params):
     """Test that home_dir is set to AUTO when not provided"""
-    aws = StartAWS(**complete_params)
-    aws.home_dir = ""
+    params = complete_params.copy()
+    params['home_dir'] = ""
+    aws = StartAWS(**params)
     aws.gh_runner_tokens = ["test-token"]
     aws.runner_release = "https://example.com/runner.tar.gz"
 
@@ -348,26 +363,30 @@ def test_create_instances_missing_release(aws):
         aws.create_instances()
 
 
-def test_create_instances_sets_auto_home_dir(aws):
+def test_create_instances_sets_auto_home_dir(base_aws_params):
     """Test that home_dir is set to AUTO when not provided"""
-    aws.home_dir = ""
-    aws.gh_runner_tokens = ["test-token"]
-    aws.runner_release = "https://example.com/runner.tar.gz"
+    params = base_aws_params.copy()
+    params['home_dir'] = ""
 
-    with patch("boto3.client") as mock_client:
-        mock_ec2 = Mock()
-        mock_client.return_value = mock_ec2
+    with mock_aws():
+        aws = StartAWS(**params)
+        aws.gh_runner_tokens = ["test-token"]
+        aws.runner_release = "https://example.com/runner.tar.gz"
 
-        # Mock the run_instances response
-        mock_ec2.run_instances.return_value = {
-            "Instances": [{"InstanceId": "i-123456"}]
-        }
+        with patch("boto3.client") as mock_client:
+            mock_ec2 = Mock()
+            mock_client.return_value = mock_ec2
 
-        result = aws.create_instances()
+            # Mock the run_instances response
+            mock_ec2.run_instances.return_value = {
+                "Instances": [{"InstanceId": "i-123456"}]
+            }
 
-        # Verify home_dir was set to AUTO for runtime detection
-        assert aws.home_dir == AUTO
-        assert "i-123456" in result
+            result = aws.create_instances()
+
+            # Verify home_dir was set to AUTO for runtime detection
+            assert aws.home_dir == AUTO
+            assert "i-123456" in result
 
 
 def test_create_instances_missing_tokens(aws):
