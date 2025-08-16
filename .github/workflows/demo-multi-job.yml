@@ -1,0 +1,8 @@
+name: Demo – multiple instances for different job types
+on:
+  workflow_dispatch:
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Placeholder workflow – being developed in #2 / rw/hooks branch"

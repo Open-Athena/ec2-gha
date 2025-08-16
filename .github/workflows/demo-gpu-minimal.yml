@@ -5,4 +5,4 @@ jobs:
   placeholder:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Placeholder workflow – being developed in \#2 / rw/hooks branch"
+      - run: echo "Placeholder workflow – being developed in #2 / rw/hooks branch"
