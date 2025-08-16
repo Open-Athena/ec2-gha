@@ -14,6 +14,14 @@ pip install '.[test]'
 
 # Run tests matching a pattern
 cd tests/ && pytest -v -m 'not slow'
+
+# Update `syrupy` "snapshots", run tests to verify they pass with (possibly-updated) snapshot values. Just a wrapper for:
+# ```bash
+# pytest --snapshot-update -m 'not slow'
+# pytest -vvv -m 'not slow' .
+# ```
+# Can be used in conjunction with `git rebase -x`.
+scripts/update-snapshots.sh
 ```
 
 ### Linting
