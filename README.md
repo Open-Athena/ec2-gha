@@ -4,6 +4,7 @@ Run GitHub Actions on ephemeral EC2 instances.
 **TOC**
 <!-- toc -->
 - [Quick Start](#quick-start)
+- [Demos](#demos)
 - [Inputs](#inputs)
     - [Required](#required)
         - [`secrets.GH_SA_TOKEN`](#gh-sa-token)
@@ -12,8 +13,9 @@ Run GitHub Actions on ephemeral EC2 instances.
 - [Outputs](#outputs)
 - [Technical Details](#technical)
     - [Runner Lifecycle](#lifecycle)
-    - [Multi-Job Workflows](#multi-job)
-    - [How Termination Works](#termination)
+    - [Parallel Jobs (Multiple Instances)](#parallel)
+    - [Multi-Job Workflows (Sequential)](#multi-job)
+    - [Termination logic](#termination)
     - [CloudWatch Logs Integration](#cloudwatch)
     - [Debugging and Troubleshooting](#debugging)
         - [SSH Access](#ssh)
@@ -58,7 +60,7 @@ jobs:
 
 Example workflows demonstrating ec2-gha capabilities are in [`.github/workflows/`](.github/workflows/):
 
-[![](img/demos%2324.png)][demos#24]
+[![](img/demos%2325%201.png)][demos#25]
 
 ### GPU Workflows
 - [`demo-gpu-minimal.yml`](.github/workflows/demo-gpu-minimal.yml) - Minimal GPU test with `nvidia-smi`
@@ -105,6 +107,7 @@ The `EC2_LAUNCH_ROLE` is passed to [aws-actions/configure-aws-credentials]; if y
 Many of these fall back to corresponding `vars.*` (if not provided as `inputs`):
 
 - `action_ref` - ec2-gha Git ref to checkout (branch/tag/SHA); auto-detected if not specified
+- `aws_region` - AWS region for EC2 instances (falls back to `vars.AWS_REGION`, default: `us-east-1`)
 - `cloudwatch_logs_group` - CloudWatch Logs group name for streaming logs (falls back to `vars.CLOUDWATCH_LOGS_GROUP`)
 - `ec2_home_dir` - Home directory (default: `/home/ubuntu`)
 - `ec2_image_id` - AMI ID (default: Ubuntu 24.04 LTS)
@@ -116,6 +119,7 @@ Many of these fall back to corresponding `vars.*` (if not provided as `inputs`):
 - `ec2_instance_type` - Instance type (default: `t3.medium`)
 - `ec2_key_name` - EC2 key pair name (for [SSH access])
 - `instance_count` - Number of instances to create (default: 1, for parallel jobs)
+- `instance_name` - Name tag template for EC2 instances. Uses Python string.Template format with variables: `$repo`, `$name` (workflow filename stem), `$workflow` (full workflow name), `$ref`, `$run_number`, `$idx` (0-based instance index for multi-instance launches). Default: `$repo/$name#$run_number`
 - `ec2_root_device_size` - Root device size in GB (default: 0 = use AMI default)
 - `ec2_security_group_id` - Security group ID (required for [SSH access], should expose inbound port 22)
 - `max_instance_lifetime` - Maximum instance lifetime in minutes before automatic shutdown (falls back to `vars.MAX_INSTANCE_LIFETIME`, default: 360 = 6 hours; generally should not be relevant, instances shut down within 1-2mins of jobs completing)
@@ -606,4 +610,4 @@ This repo borrows from or reuses:
 [file an issue]: https://github.com/Open-Athena/ec2-gha/issues/new/choose
 [SSH access]: #ssh
 [cw]: #cloudwatch
-[demos#24]: https://github.com/Open-Athena/ec2-gha/actions/runs/17003905474
+[demos#25]: https://github.com/Open-Athena/ec2-gha/actions/runs/17004697889

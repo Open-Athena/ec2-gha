@@ -15,6 +15,10 @@ For documentation about the main workflow, [`runner.yml`](runner.yml), see [the 
     - [`multi-job` – launch multiple instances, use individually](#multi-job)
 <!-- /toc -->
 
+## [`demos`](demos.yml) – run all demo workflows <a id="demos"></a>
+Useful regression test, demonstrates and verifies features.
+
+[![](../../img/demos%2325%201.png)][demos#25]
 
 ## GPU demos <a id="gpu"></a>
 
@@ -38,10 +42,9 @@ For documentation about the main workflow, [`runner.yml`](runner.yml), see [the 
 - Uses pre-installed PyTorch from DLAMI conda environment
 - **Use case:** Package compatibility testing across versions
 
-## Architecture & Parallelization <a id="arch"></a>
+[![](../../img/mamba%2312.png)][mamba#12]
 
-### [`demos`](demos.yml) – run all demo workflows <a id="demos"></a>
-Useful regression test, demonstrates and verifies features.
+## Architecture & Parallelization <a id="arch"></a>
 
 ### [`archs`](demo-archs.yml) – launch x86 and ARM nodes <a id="archs"></a>
 - Verify architecture-specific behavior
@@ -66,4 +69,7 @@ Useful regression test, demonstrates and verifies features.
   - Results in names like `"ec2-gha/multi-job-0 (#123)"` and `"ec2-gha/multi-job-1 (#123)"`
 - **Instance type:** `t3.medium`
 - **Use case:** Pipeline with dedicated instances per stage
+
+[mamba#12]: https://github.com/Open-Athena/mamba/actions/runs/16972369660/
+[demos#25]: https://github.com/Open-Athena/ec2-gha/actions/runs/17004697889
 
