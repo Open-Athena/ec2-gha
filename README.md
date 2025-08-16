@@ -44,12 +44,34 @@ jobs:
     # - `secrets.GH_SA_TOKEN` (GitHub token with repo admin access)
     # - `vars.EC2_LAUNCH_ROLE` (role with GitHub OIDC access to this repo)
     secrets: inherit
+    with:
+      ec2_instance_type: g4dn.xlarge
+      ec2_image_id: ami-00096836009b16a22  # Deep Learning OSS Nvidia Driver AMI GPU PyTorch
   gpu-test:
     needs: ec2
-    runs-on: ${{ needs.ec2.outputs.instance }}
+    runs-on: ${{ needs.ec2.outputs.id }}
     steps:
       - run: nvidia-smi  # GPU node!
 ```
+
+## Demos <a id="demos"></a>
+
+Example workflows demonstrating ec2-gha capabilities are in [`.github/workflows/`](.github/workflows/):
+
+### GPU Workflows
+- [`demo-gpu-minimal.yml`](.github/workflows/demo-gpu-minimal.yml) - Minimal GPU test with `nvidia-smi`
+- [`demo-gpu-job-seq.yml`](.github/workflows/demo-gpu-job-seq.yml) - Sequential ML workflow (prepare→train→evaluate) on a single GPU instance
+
+### Architecture & Parallelization
+- [`demo-archs.yml`](.github/workflows/demo-archs.yml) - Cross-architecture testing (x86 and ARM)
+- [`demo-multi-instance.yml`](.github/workflows/demo-multi-instance.yml) - Parallel jobs on multiple instances
+- [`demo-multi-job.yml`](.github/workflows/demo-multi-job.yml) - Different job types on separate instances
+- [`demo-matrix-wide.yml`](.github/workflows/demo-matrix-wide.yml) - Wide matrix strategy across many instances
+
+### Test Suite
+- [`demos.yml`](.github/workflows/demos.yml) - Runs all demos for regression testing
+
+See [`.github/workflows/README.md`](.github/workflows/README.md) for detailed descriptions of each demo.
 
 ## Inputs <a id="inputs"></a>
 

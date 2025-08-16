@@ -8,11 +8,8 @@ jobs:
   demo-gpu-minimal:
     uses: ./.github/workflows/demo-gpu-minimal.yml
     secrets: inherit
-  demo-job-seq:
-    uses: ./.github/workflows/demo-job-seq.yml
-    secrets: inherit
-  demo-gpu:
-    uses: ./.github/workflows/demo-gpu.yml
+  demo-gpu-job-seq:
+    uses: ./.github/workflows/demo-gpu-job-seq.yml
     secrets: inherit
   demo-archs:
     uses: ./.github/workflows/demo-archs.yml
