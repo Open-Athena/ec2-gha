@@ -159,22 +159,22 @@ jobs:
         with:
           aws_region: ${{ inputs.aws_region }}
           aws_tags: ${{ inputs.aws_tags }}
-          cloudwatch_logs_group: ${{ inputs.cloudwatch_logs_group }}
-          ec2_image_id: ${{ inputs.ec2_image_id }}
-          ec2_instance_type: ${{ inputs.ec2_instance_type }}
-          ec2_instance_profile: ${{ inputs.ec2_instance_profile }}
-          ec2_home_dir: ${{ inputs.ec2_home_dir }}
-          ec2_key_name: ${{ inputs.ec2_key_name }}
+          cloudwatch_logs_group: ${{ inputs.cloudwatch_logs_group || vars.CLOUDWATCH_LOGS_GROUP }}
+          ec2_image_id: ${{ inputs.ec2_image_id || vars.EC2_IMAGE_ID }}
+          ec2_instance_type: ${{ inputs.ec2_instance_type || vars.EC2_INSTANCE_TYPE }}
+          ec2_instance_profile: ${{ inputs.ec2_instance_profile || vars.EC2_INSTANCE_PROFILE }}
+          ec2_home_dir: ${{ inputs.ec2_home_dir || vars.EC2_HOME_DIR }}
+          ec2_key_name: ${{ inputs.ec2_key_name || vars.EC2_KEY_NAME }}
           ec2_root_device_size: ${{ inputs.ec2_root_device_size }}
-          ec2_security_group_id: ${{ inputs.ec2_security_group_id }}
+          ec2_security_group_id: ${{ inputs.ec2_security_group_id || vars.EC2_SECURITY_GROUP_ID }}
           ec2_userdata: ${{ inputs.ec2_userdata }}
           instance_count: ${{ inputs.instance_count }}
           instance_name: ${{ inputs.instance_name }}
-          max_instance_lifetime: ${{ inputs.max_instance_lifetime }}
-          runner_initial_grace_period: ${{ inputs.runner_initial_grace_period }}
-          runner_grace_period: ${{ inputs.runner_grace_period }}
-          runner_poll_interval: ${{ inputs.runner_poll_interval }}
-          runner_registration_timeout: ${{ inputs.runner_registration_timeout }}
-          ssh_pubkey: ${{ inputs.ssh_pubkey }}
+          max_instance_lifetime: ${{ inputs.max_instance_lifetime || vars.MAX_INSTANCE_LIFETIME }}
+          runner_initial_grace_period: ${{ inputs.runner_initial_grace_period || vars.RUNNER_INITIAL_GRACE_PERIOD }}
+          runner_grace_period: ${{ inputs.runner_grace_period || vars.RUNNER_GRACE_PERIOD }}
+          runner_poll_interval: ${{ inputs.runner_poll_interval || vars.RUNNER_POLL_INTERVAL }}
+          runner_registration_timeout: ${{ inputs.runner_registration_timeout || vars.RUNNER_REGISTRATION_TIMEOUT }}
+          ssh_pubkey: ${{ inputs.ssh_pubkey || vars.SSH_PUBKEY }}
         env:
           GH_PAT: ${{ secrets.GH_SA_TOKEN }}
