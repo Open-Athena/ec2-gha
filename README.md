@@ -63,6 +63,7 @@ Example workflows demonstrating ec2-gha capabilities are in [`.github/workflows/
 ### GPU Workflows
 - [`demo-gpu-minimal.yml`](.github/workflows/demo-gpu-minimal.yml) - Minimal GPU test with `nvidia-smi`
 - [`demo-gpu-job-seq.yml`](.github/workflows/demo-gpu-job-seq.yml) - Sequential ML workflow (prepare→train→evaluate) using pre-installed PyTorch from DLAMI
+- Real-world example: [Mamba installation testing](https://github.com/Open-Athena/mamba/blob/gha/.github/workflows/install.yaml) - Shows `instance_name` customization for version-specific testing
 
 ### Architecture & Parallelization
 - [`demo-archs.yml`](.github/workflows/demo-archs.yml) - Cross-architecture testing (x86 and ARM)

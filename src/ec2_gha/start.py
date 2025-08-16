@@ -89,7 +89,7 @@ class StartAWS(CreateCloudInstance):
     tags: list[dict[str, str]] = field(default_factory=list)
     userdata: str = ""
 
-    def _build_aws_params(self, user_data_params: dict) -> dict:
+    def _build_aws_params(self, user_data_params: dict, idx: int = None) -> dict:
         """Build the parameters for the AWS API call.
 
         Parameters
@@ -167,6 +167,10 @@ class StartAWS(CreateCloudInstance):
 
             # Get run number
             template_vars["run_number"] = os.environ.get("GITHUB_RUN_NUMBER", "unknown")
+
+            # Add instance index if provided (for multi-instance launches)
+            if idx is not None:
+                template_vars["idx"] = str(idx)
 
             # Apply the instance name template
             from string import Template
@@ -288,7 +292,7 @@ class StartAWS(CreateCloudInstance):
             self.home_dir = AUTO
             print("Home directory will be auto-detected on instance")
         id_dict = {}
-        for token in self.gh_runner_tokens:
+        for idx, token in enumerate(self.gh_runner_tokens):
             label = gh.GitHubInstance.generate_random_label()
             # Combine user labels with the generated runner label
             labels = f"{self.labels},{label}" if self.labels else label
@@ -312,7 +316,8 @@ class StartAWS(CreateCloudInstance):
                 "token": token,
                 "userdata": self.userdata,
             }
-            params = self._build_aws_params(user_data_params)
+            # Pass index for multi-instance scenarios (0-based)
+            params = self._build_aws_params(user_data_params, idx=idx)
             if self.root_device_size > 0:
                 params = self._modify_root_disk_size(ec2, params)
             # Debug logging for instance profile
