@@ -1,26 +1,29 @@
 #!/bin/bash
-# Debug: Log to syslog to see what's happening
-logger "EC2-GHA: Starting userdata script"
-echo "EC2-GHA: Starting userdata script" >&2
+set -e
+# Helper functions
+log() { echo "[$$(date '+%Y-%m-%d %H:%M:%S')] $$1" | tee -a /var/log/runner-setup.log; }
+log_error() { log "ERROR: $$1" >&2; }
 
-# Log any errors to syslog before exiting
+# Get metadata (IMDSv2 compatible)
+get_metadata() {
+    local path="$$1"
+    local token=$$(curl -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 300" http://169.254.169.254/latest/api/token 2>/dev/null || true)
+    if [ -n "$$token" ]; then
+        curl -s -H "X-aws-ec2-metadata-token: $$token" "http://169.254.169.254/latest/meta-data/$$path" 2>/dev/null || echo "unknown"
+    else
+        curl -s "http://169.254.169.254/latest/meta-data/$$path" 2>/dev/null || echo "unknown"
+    fi
+}
+
+logger "EC2-GHA: Starting userdata script"
 trap 'logger "EC2-GHA: Script failed at line $$LINENO with exit code $$?"' ERR
 
-set -e
-
-# Set up error handling and failsafe termination
-# Get instance ID early for error messages (IMDSv2 compatible)
-IMDS_TOKEN_EARLY=$$(curl -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 300" http://169.254.169.254/latest/api/token 2>/dev/null || true)
-if [ -n "$$IMDS_TOKEN_EARLY" ]; then
-    INSTANCE_ID=$$(curl -s -H "X-aws-ec2-metadata-token: $$IMDS_TOKEN_EARLY" http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null || echo "unknown")
-else
-    INSTANCE_ID=$$(curl -s http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null || echo "unknown")
-fi
+INSTANCE_ID=$$(get_metadata "instance-id")
 
 terminate_instance() {
     local reason="$$1"
-    echo "[$$(date '+%Y-%m-%d %H:%M:%S')] FATAL: $$reason" | tee -a /var/log/runner-setup.log
-    echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Terminating instance $$INSTANCE_ID due to setup failure" | tee -a /var/log/runner-setup.log
+    log "FATAL: $$reason"
+    log "Terminating instance $$INSTANCE_ID due to setup failure"
 
     # Try to remove runner if it was partially configured
     if [ -f "$$homedir/config.sh" ] && [ -n "$${RUNNER_TOKEN:-}" ]; then
@@ -44,17 +47,17 @@ if ! [[ "$$REGISTRATION_TIMEOUT" =~ ^[0-9]+$$ ]]; then
 fi
 logger "EC2-GHA: Registration timeout set to $$REGISTRATION_TIMEOUT seconds"
 (
-    echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Watchdog: Starting $$REGISTRATION_TIMEOUT second timeout" >> /var/log/runner-setup.log
+    log "Watchdog: Starting $$REGISTRATION_TIMEOUT second timeout"
     sleep $$REGISTRATION_TIMEOUT
     if [ ! -f /var/run/github-runner-registered ]; then
-        echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Watchdog: Registration marker not found after timeout" >> /var/log/runner-setup.log
+        log "Watchdog: Registration marker not found after timeout"
         terminate_instance "Runner failed to register within $$REGISTRATION_TIMEOUT seconds"
     else
-        echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Watchdog: Registration marker found, exiting normally" >> /var/log/runner-setup.log
+        log "Watchdog: Registration marker found, exiting normally"
     fi
 ) &
 REGISTRATION_WATCHDOG_PID=$$!
-echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Watchdog PID: $$REGISTRATION_WATCHDOG_PID"
+log "Watchdog PID: $$REGISTRATION_WATCHDOG_PID"
 # Save watchdog PID to file so it survives exec redirect
 echo $$REGISTRATION_WATCHDOG_PID > /var/run/github-runner-watchdog.pid
 
@@ -70,7 +73,7 @@ if [ -z "$$homedir" ] || [ "$$homedir" = "AUTO" ]; then
     for user in ubuntu ec2-user centos admin debian fedora alpine arch; do
         if id "$$user" &>/dev/null; then
             homedir="/home/$$user"
-            echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Auto-detected: $$homedir"
+            log "Auto-detected: $$homedir"
             break
         fi
     done
@@ -87,37 +90,37 @@ if [ -z "$$homedir" ] || [ "$$homedir" = "AUTO" ]; then
 
         if [ -z "$$homedir" ]; then
             homedir="/home/ec2-user"  # Ultimate fallback
-            echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Using fallback: $$homedir"
+            log "Using fallback: $$homedir"
         else
             # Use stat to get the actual owner of the directory
             owner=$$(stat -c "%U" "$$homedir" 2>/dev/null || stat -f "%Su" "$$homedir" 2>/dev/null)
-            echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Detected: $$homedir ($$owner)"
+            log "Detected: $$homedir ($$owner)"
         fi
     fi
 else
-    echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Using: $$homedir"
+    log "Using: $$homedir"
 fi
 
 # Set up maximum lifetime timeout - do this early to ensure cleanup
 MAX_LIFETIME_MINUTES=$max_instance_lifetime
-echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Max lifetime: $${MAX_LIFETIME_MINUTES}m"
+log "Max lifetime: $${MAX_LIFETIME_MINUTES}m"
 nohup bash -c "sleep $${MAX_LIFETIME_MINUTES}m && echo '[$$(date)] Maximum lifetime reached' && shutdown -h now" > /var/log/max-lifetime.log 2>&1 &
 
 # Configure CloudWatch Logs if enabled
 if [ "$cloudwatch_logs_group" != "" ]; then
-    echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Installing CloudWatch agent"
+    log "Installing CloudWatch agent"
     # Use a subshell to prevent CloudWatch failures from stopping the entire script
     (
 
     # Wait for dpkg lock to be released (up to 2 minutes)
-    echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Waiting for dpkg lock to be released..."
+    log "Waiting for dpkg lock to be released..."
     timeout=120
     while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
         if [ $$timeout -le 0 ]; then
-            echo "[$$(date '+%Y-%m-%d %H:%M:%S')] WARNING: dpkg lock timeout, proceeding anyway"
+            log "WARNING: dpkg lock timeout, proceeding anyway"
             break
         fi
-        echo "[$$(date '+%Y-%m-%d %H:%M:%S')] dpkg is locked, waiting... ($$timeout seconds remaining)"
+        log "dpkg is locked, waiting... ($$timeout seconds remaining)"
         sleep 5
         timeout=$$((timeout - 5))
     done
@@ -187,13 +190,13 @@ EOF
         -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json \
         -s
 
-    echo "[$$(date '+%Y-%m-%d %H:%M:%S')] CloudWatch agent started"
-    ) || echo "[$$(date '+%Y-%m-%d %H:%M:%S')] WARNING: CloudWatch agent installation failed, continuing without it"
+    log "CloudWatch agent started"
+    ) || log "WARNING: CloudWatch agent installation failed, continuing without it"
 fi
 
 # Configure SSH access if public key provided
 if [ -n "$ssh_pubkey" ]; then
-    echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Configuring SSH access"
+    log "Configuring SSH access"
 
     # Determine the default user based on the home directory owner
     DEFAULT_USER=$$(stat -c "%U" "$$homedir" 2>/dev/null || echo "root")
@@ -211,40 +214,25 @@ if [ -n "$ssh_pubkey" ]; then
         chown -R "$$DEFAULT_USER:$$DEFAULT_USER" "$$homedir/.ssh"
     fi
 
-    echo "[$$(date '+%Y-%m-%d %H:%M:%S')] SSH key added for user $$DEFAULT_USER"
+    log "SSH key added for user $$DEFAULT_USER"
 fi
 
 # Fetch instance metadata before redirecting output
-# Support both IMDSv1 and IMDSv2
-IMDS_TOKEN=$$(curl -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 300" http://169.254.169.254/latest/api/token 2>/dev/null || true)
-if [ -n "$$IMDS_TOKEN" ]; then
-    # IMDSv2
-    INSTANCE_TYPE=$$(curl -s -H "X-aws-ec2-metadata-token: $$IMDS_TOKEN" http://169.254.169.254/latest/meta-data/instance-type || echo "unknown")
-    INSTANCE_ID=$$(curl -s -H "X-aws-ec2-metadata-token: $$IMDS_TOKEN" http://169.254.169.254/latest/meta-data/instance-id || echo "unknown")
-    REGION=$$(curl -s -H "X-aws-ec2-metadata-token: $$IMDS_TOKEN" http://169.254.169.254/latest/meta-data/placement/region || echo "unknown")
-    AZ=$$(curl -s -H "X-aws-ec2-metadata-token: $$IMDS_TOKEN" http://169.254.169.254/latest/meta-data/placement/availability-zone || echo "unknown")
-else
-    # IMDSv1 fallback
-    INSTANCE_TYPE=$$(curl -s http://169.254.169.254/latest/meta-data/instance-type || echo "unknown")
-    INSTANCE_ID=$$(curl -s http://169.254.169.254/latest/meta-data/instance-id || echo "unknown")
-    REGION=$$(curl -s http://169.254.169.254/latest/meta-data/placement/region || echo "unknown")
-    AZ=$$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone || echo "unknown")
-fi
+INSTANCE_TYPE=$$(get_metadata "instance-type")
+INSTANCE_ID=$$(get_metadata "instance-id")
+REGION=$$(get_metadata "placement/region")
+AZ=$$(get_metadata "placement/availability-zone")
 
 # Redirect runner setup logs to a file for CloudWatch
 exec >> /var/log/runner-setup.log 2>&1
-echo "[$$( date '+%Y-%m-%d %H:%M:%S')] Starting runner setup"
+log "Starting runner setup"
 
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Instance metadata:"
-echo "  Instance type: $${INSTANCE_TYPE}"
-echo "  Instance ID: $${INSTANCE_ID}"
-echo "  Region: $${REGION}"
-echo "  Availability zone: $${AZ}"
+log "Instance metadata: Type=$${INSTANCE_TYPE} ID=$${INSTANCE_ID} Region=$${REGION} AZ=$${AZ}"
 
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Working directory: $$homedir"
+log "Working directory: $$homedir"
 cd "$$homedir"
 echo "$script" > pre-runner-script.sh
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Running pre-runner script"
+log "Running pre-runner script"
 source pre-runner-script.sh
 export RUNNER_ALLOW_RUNASROOT=1
 # Detect architecture and download appropriate runner
@@ -252,13 +240,13 @@ ARCH=$$(uname -m)
 if [ "$$ARCH" = "aarch64" ] || [ "$$ARCH" = "arm64" ]; then
     # For ARM, replace x64 with arm64 in the URL
     RUNNER_URL=$$(echo "$runner_release" | sed 's/x64/arm64/g')
-    echo "[$$(date '+%Y-%m-%d %H:%M:%S')] ARM detected, using: $$RUNNER_URL"
+    log "ARM detected, using: $$RUNNER_URL"
 else
     RUNNER_URL="$runner_release"
-    echo "[$$(date '+%Y-%m-%d %H:%M:%S')] x64 detected, using: $$RUNNER_URL"
+    log "x64 detected, using: $$RUNNER_URL"
 fi
 curl -L $$RUNNER_URL -o runner.tar.gz
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Extracting runner"
+log "Extracting runner"
 # `--no-overwrite-dir` is important, otherwise `$$homedir` ends up `chown`'d to `1001:docker`, and `sshd` will refuse connection attempts to `$$homedir`
 tar --no-overwrite-dir -xzf runner.tar.gz
 # Create job tracking scripts
@@ -343,18 +331,9 @@ systemctl daemon-reload
 systemctl enable runner-termination-check.timer
 systemctl start runner-termination-check.timer
 
-# Get instance metadata for descriptive runner name (IMDSv2 compatible)
-# Reuse token if available, otherwise get a new one
-if [ -z "$$IMDS_TOKEN" ]; then
-    IMDS_TOKEN=$$(curl -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 300" http://169.254.169.254/latest/api/token 2>/dev/null || true)
-fi
-if [ -n "$$IMDS_TOKEN" ]; then
-    INSTANCE_ID=$$(curl -s -H "X-aws-ec2-metadata-token: $$IMDS_TOKEN" http://169.254.169.254/latest/meta-data/instance-id || echo "unknown")
-    INSTANCE_TYPE=$$(curl -s -H "X-aws-ec2-metadata-token: $$IMDS_TOKEN" http://169.254.169.254/latest/meta-data/instance-type || echo "unknown")
-else
-    INSTANCE_ID=$$(curl -s http://169.254.169.254/latest/meta-data/instance-id || echo "unknown")
-    INSTANCE_TYPE=$$(curl -s http://169.254.169.254/latest/meta-data/instance-type || echo "unknown")
-fi
+# Get instance metadata for descriptive runner name
+INSTANCE_ID=$$(get_metadata "instance-id")
+INSTANCE_TYPE=$$(get_metadata "instance-type")
 
 # Create runner name with just the instance ID for uniqueness
 RUNNER_NAME="ec2-$${INSTANCE_ID}"
@@ -382,18 +361,24 @@ fi
 # The $labels variable already contains user labels and the critical runner-xxx label from Python
 ALL_LABELS="$labels$${METADATA_LABELS}"
 
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Configuring runner for repo: $repo"
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Runner name: $${RUNNER_NAME}"
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Labels: $${ALL_LABELS}"
+log "Configuring runner for repo: $repo"
+log "Runner name: $${RUNNER_NAME}"
+log "Labels: $${ALL_LABELS}"
 # Export token for error handler
 export RUNNER_TOKEN="$token"
-# Use --replace to force replacement if a runner with the same name exists
-# This prevents interactive prompts that would lose our labels
-./config.sh --url https://github.com/$repo --token $token --labels "$${ALL_LABELS}" --name "$${RUNNER_NAME}" --disableupdate --replace
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Runner registered successfully"
+
+# Attempt to register. If a runner with the same name exists, config.sh will fail
+# We use --unattended to prevent interactive prompts
+if ! ./config.sh --url https://github.com/$repo --token $token --labels "$${ALL_LABELS}" --name "$${RUNNER_NAME}" --disableupdate --unattended; then
+    log_error "Failed to register runner '$${RUNNER_NAME}'"
+    log_error "This usually means a runner with this name already exists"
+    log_error "If instance ID is 'unknown', metadata fetching likely failed"
+    terminate_instance "Runner registration failed"
+fi
+log "Runner registered successfully"
 
 # Mark registration as complete and kill the watchdog
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Creating registration marker file at /var/run/github-runner-registered"
+log "Creating registration marker"
 touch /var/run/github-runner-registered
 ls -la /var/run/github-runner-registered
 # Read watchdog PID from file (survives exec redirect)
@@ -401,21 +386,21 @@ if [ -f /var/run/github-runner-watchdog.pid ]; then
     WATCHDOG_PID=$$(cat /var/run/github-runner-watchdog.pid)
     if kill -0 $$WATCHDOG_PID 2>/dev/null; then
         kill $$WATCHDOG_PID 2>/dev/null || true
-        echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Killed registration watchdog (PID: $$WATCHDOG_PID)"
+        log "Killed registration watchdog (PID: $$WATCHDOG_PID)"
     else
-        echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Watchdog process $$WATCHDOG_PID already terminated"
+        log "Watchdog process $$WATCHDOG_PID already terminated"
     fi
     rm -f /var/run/github-runner-watchdog.pid
 fi
 
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Starting runner"
+log "Starting runner"
 # Create marker file for cleanup service
 touch /var/run/github-runner-started
 # Ensure CloudWatch agent can read diagnostic logs
 # The cwagent user needs to traverse into $homedir to reach _diag
 # Make $homedir world-executable (but not readable) so cwagent can traverse it
 chmod o+x $$homedir
-echo "[$$(date '+%Y-%m-%d %H:%M:%S')] Made $$homedir traversable for CloudWatch agent"
+log "Made $$homedir traversable for CloudWatch agent"
 # Create _diag directory if it doesn't exist
 mkdir -p $$homedir/_diag
 # The _diag files are already world-readable by default, just ensure the directory is too
