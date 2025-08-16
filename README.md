@@ -594,9 +594,87 @@ gh variable set EC2_INSTANCE_PROFILE --body "GitHubRunnerEC2Profile"
 </details>
 
 ## Acknowledgements <a id="acks"></a>
-This repo borrows from or reuses:
-- [omsf/start-aws-gha-runner] (upstream; this fork adds self-termination and various features)
-- [related-sciences/gce-github-runner] (self-terminating GCE runner, using [job hooks][hooks])
+- This repo forked [omsf/start-aws-gha-runner]; it adds self-termination (bypassing [omsf/stop-aws-gha-runner]) and various features.
+- [machulav/ec2-github-runner] is similar, [requires][egr ex] separate "start" and "stop" jobs
+- [related-sciences/gce-github-runner] is a self-terminating GCE runner, using [job hooks][hooks])
+
+Here's a diff porting [ec2-github-runner][machulav/ec2-github-runner]'s README [example][egr ex] to ec2-gha:
+```diff
+ name: do-the-job
+ on: pull_request
+ jobs:
+-  start-runner:
++  ec2:
+     name: Start self-hosted EC2 runner
+-    runs-on: ubuntu-latest
+-    outputs:
+-      label: ${{ steps.start-ec2-runner.outputs.label }}
+-      ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
+-    steps:
+-      - name: Configure AWS credentials
+-        uses: aws-actions/configure-aws-credentials@v4
++    uses: Open-Athena/ec2-gha/.github/workflows/runner.yml@v2
+         with:
+-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+-          aws-region: ${{ secrets.AWS_REGION }}
+-      - name: Start EC2 runner
+-        id: start-ec2-runner
+-        uses: machulav/ec2-github-runner@v2
+-        with:
+-          mode: start
+-          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+-          ec2-image-id: ami-123
+-          ec2-instance-type: t3.nano
+-          subnet-id: subnet-123
+-          security-group-id: sg-123
+-          iam-role-name: my-role-name # optional, requires additional permissions
+-          aws-resource-tags: > # optional, requires additional permissions
+-            [
+-              {"Key": "Name", "Value": "ec2-github-runner"},
+-              {"Key": "GitHubRepository", "Value": "${{ github.repository }}"}
+-            ]
+-          block-device-mappings: > # optional, to customize EBS volumes
+-            [
+-              {"DeviceName": "/dev/sda1", "Ebs": {"VolumeSize": 100, "VolumeType": "gp3"}}
+-            ]
++      ec2_image_id: ami-123
++      ec2_instance_type: t3.nano
++      ec2_root_device_size: 100
++      ec2_subnet_id: subnet-123
++      ec2_security_group_id: sg-123
++      ec2_launch_role: my-role-name
++    secrets:
++      GH_SA_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+   do-the-job:
+     name: Do the job on the runner
+     needs: start-runner # required to start the main job when the runner is ready
+     runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+     steps:
+       - name: Hello World
+         run: echo 'Hello World!'
+-  stop-runner:
+-    name: Stop self-hosted EC2 runner
+-    needs:
+-      - start-runner # required to get output from the start-runner job
+-      - do-the-job # required to wait when the main job is done
+-    runs-on: ubuntu-latest
+-    if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
+-    steps:
+-      - name: Configure AWS credentials
+-        uses: aws-actions/configure-aws-credentials@v4
+-        with:
+-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+-          aws-region: ${{ secrets.AWS_REGION }}
+-      - name: Stop EC2 runner
+-        uses: machulav/ec2-github-runner@v2
+-        with:
+-          mode: stop
+-          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+-          label: ${{ needs.start-runner.outputs.label }}
+-          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
+```
 
 [`runner.yml`]: .github/workflows/runner.yml
 [demo-job-seq]: .github/workflows/demo-job-seq.yml
@@ -605,6 +683,9 @@ This repo borrows from or reuses:
 [aws-actions/configure-aws-credentials]: https://github.com/aws-actions/configure-aws-credentials
 [hooks]: https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/run-scripts
 [omsf/start-aws-gha-runner]: https://github.com/omsf/start-aws-gha-runner
+[omsf/stop-aws-gha-runner]: https://github.com/omsf/stop-aws-gha-runner
+[machulav/ec2-github-runner]: https://github.com/machulav/ec2-github-runner
+[egr ex]: https://github.com/machulav/ec2-github-runner?tab=readme-ov-file#example 
 [related-sciences/gce-github-runner]: https://github.com/related-sciences/gce-github-runner
 [reusable workflow]: https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows#calling-a-reusable-workflow
 [file an issue]: https://github.com/Open-Athena/ec2-gha/issues/new/choose
