@@ -30,6 +30,7 @@ jobs:
     uses: ./.github/workflows/runner.yml
     secrets: inherit
     with:
+      instance_name: "$repo/$name (#$run_number)"
       ec2_instance_type: g4dn.xlarge
       ec2_image_id: ami-00096836009b16a22  # Deep Learning OSS Nvidia Driver AMI GPU PyTorch
       ssh_pubkey: ${{ inputs.ssh_pubkey }}
@@ -56,17 +57,17 @@ jobs:
           echo "GPU UUID: $uuid"
           echo "GPU Name: $name"
 
-      - name: Install PyTorch with CUDA support
+      - name: Setup PyTorch environment
         run: |
-          echo "=== Installing PyTorch with CUDA support ==="
-          # Install python3-venv if not available
-          sudo apt-get update && sudo apt-get install -y python3-venv
-          # Use system Python3 and create a virtual environment
-          python3 --version
-          python3 -m venv /tmp/venv
-          source /tmp/venv/bin/activate
-          pip install torch --index-url https://download.pytorch.org/whl/cu121
-          echo "PyTorch installed successfully"
+          echo "=== Setting up PyTorch environment ==="
+          # The DLAMI already has PyTorch installed in a conda environment
+          # Set up environment for GitHub Actions to use the conda env
+          echo "/opt/conda/envs/pytorch/bin" >> $GITHUB_PATH
+          echo "CONDA_DEFAULT_ENV=pytorch" >> $GITHUB_ENV
+
+          # Verify PyTorch is available
+          /opt/conda/envs/pytorch/bin/python -c "import torch; print(f'PyTorch {torch.__version__} with CUDA {torch.version.cuda}')"
+          echo "PyTorch environment ready"
 
       - name: Sleep (${{ inputs.sleep }}s)
         if: ${{ inputs.sleep > 0 }}
@@ -97,8 +98,8 @@ jobs:
       - name: Run training benchmark
         run: |
           echo "=== Running GPU Training Benchmark ==="
-          source /tmp/venv/bin/activate
-          python .github/test-scripts/gpu-benchmark.py
+          # Use the conda environment's Python which has PyTorch pre-installed
+          /opt/conda/envs/pytorch/bin/python .github/test-scripts/gpu-benchmark.py
 
       - name: Sleep (${{ inputs.sleep }}s)
         if: ${{ inputs.sleep > 0 }}

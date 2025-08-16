@@ -58,9 +58,11 @@ jobs:
 
 Example workflows demonstrating ec2-gha capabilities are in [`.github/workflows/`](.github/workflows/):
 
+[![](img/demos%2324.png)][demos#24]
+
 ### GPU Workflows
 - [`demo-gpu-minimal.yml`](.github/workflows/demo-gpu-minimal.yml) - Minimal GPU test with `nvidia-smi`
-- [`demo-gpu-job-seq.yml`](.github/workflows/demo-gpu-job-seq.yml) - Sequential ML workflow (prepare→train→evaluate) on a single GPU instance
+- [`demo-gpu-job-seq.yml`](.github/workflows/demo-gpu-job-seq.yml) - Sequential ML workflow (prepare→train→evaluate) using pre-installed PyTorch from DLAMI
 
 ### Architecture & Parallelization
 - [`demo-archs.yml`](.github/workflows/demo-archs.yml) - Cross-architecture testing (x86 and ARM)
@@ -603,3 +605,4 @@ This repo borrows from or reuses:
 [file an issue]: https://github.com/Open-Athena/ec2-gha/issues/new/choose
 [SSH access]: #ssh
 [cw]: #cloudwatch
+[demos#24]: https://github.com/Open-Athena/ec2-gha/actions/runs/17003905474

@@ -1,64 +1,56 @@
-# GitHub Actions Workflows
+# `ec2-gha` Demos
+This directory contains the reusable workflow and demo workflows for ec2-gha, demonstrating various capabilities.
 
-This directory contains the reusable workflow and demo workflows for ec2-gha.
+For documentation about the main workflow, [`runner.yml`](runner.yml), see [the main README](../../README.md).
 
-## Core Workflow
+<!-- toc -->
+- [GPU demos](#gpu)
+    - [`gpu-minimal` – `nvidia-smi` "hello world"](#gpu-minimal)
+    - [`gpu-job-seq` – GPU train/test/eval (sequential jobs)](#gpu-job-seq)
+- [Architecture & Parallelization](#arch)
+    - [`demos` – run all demo workflows](#demos)
+    - [`archs` – launch x86 and ARM nodes](#archs)
+    - [`multi-instance` – launch multiple instances, use in matrix](#multi-instance)
+    - [`multi-job` – launch multiple instances, use individually](#multi-job)
+<!-- /toc -->
 
-### [`runner.yml`](runner.yml)
 
-See the [main README](../../README.md) for complete documentation on:
-- [Quick Start](../../README.md#quick-start) - How to use the reusable workflow
-- [Inputs](../../README.md#inputs) - All available inputs and their defaults
-- [Outputs](../../README.md#outputs) - Available outputs for job coordination
-- [Technical Details](../../README.md#technical) - Implementation details and troubleshooting
+## GPU demos <a id="gpu"></a>
 
-## Demo Workflows
-
-These workflows demonstrate various ec2-gha capabilities:
-
-### [`demo-gpu-minimal.yml`](demo-gpu-minimal.yml)
-Minimal example that launches a GPU instance and runs `nvidia-smi` to verify GPU access.
+### [`gpu-minimal`](demo-gpu-minimal.yml) – `nvidia-smi` "hello world" <a id="gpu-minimal"></a>
 - **Instance type:** `g4dn.xlarge`
-- **Use case:** Quick GPU availability test
 
-### [`demo-gpu-job-seq.yml`](demo-gpu-job-seq.yml)
-Comprehensive GPU workload with sequential jobs that:
+### [`gpu-job-seq`](demo-gpu-job-seq.yml) – GPU train/test/eval (sequential jobs) <a id="gpu-job-seq"></a>
 - Runs 3 jobs sequentially on the same GPU instance (prepare, train, evaluate)
-- Installs PyTorch with CUDA support
+- Uses pre-installed PyTorch from Deep Learning AMI's conda environment
 - Runs GPU benchmark with matrix operations and training simulation
 - Verifies same GPU is used across all jobs
 - Demonstrates instance reuse for multi-stage ML workflows
 - **Instance type:** `g4dn.xlarge`
 - **Use case:** ML/AI workflow testing with GPU acceleration
 
-### [`demo-archs.yml`](demo-archs.yml)
-Tests both x86 and ARM architectures:
-- Launches separate runners for each architecture
-- Verifies architecture-specific behavior
-- Demonstrates matrix strategy across different instance types
-- **Instance types:** `t3.medium` (x86), `t4g.medium` (ARM)
-- **Use case:** Cross-architecture testing
+## Architecture & Parallelization <a id="arch"></a>
 
-### [`demo-multi-instance.yml`](demo-multi-instance.yml)
-Shows how to launch multiple instances for parallel jobs:
+### [`demos`](demos.yml) – run all demo workflows <a id="demos"></a>
+Useful regression test, demonstrates and verifies features.
+
+### [`archs`](demo-archs.yml) – launch x86 and ARM nodes <a id="archs"></a>
+- Verify architecture-specific behavior
+- Customizes `instance_name` to distinguish architectures (e.g., `repo/name-x86`)
+- **Instance types:** `t3.medium` (x86), `t4g.medium` (ARM)
+
+### [`multi-instance`](demo-multi-instance.yml) – launch multiple instances, use in matrix <a id="multi-instance"></a>
 - Creates configurable number of instances (default: 3)
 - Uses matrix strategy to run jobs in parallel
 - Each job runs on its own EC2 instance
 - **Instance type:** `t3.medium`
 - **Use case:** Parallel test execution
 
-### [`demo-multi-job.yml`](demo-multi-job.yml)
-Demonstrates different job types on separate instances:
-- Launches 2 instances
-- Runs build job on first instance
-- Runs test job on second instance
-- Aggregates results from both instances
+### [`multi-job`](demo-multi-job.yml) – launch multiple instances, use individually <a id="multi-job"></a>
+- Launch 2 instances
+- Run build job on first instance
+- Run test job on second instance
+- Aggregate results from both instances
 - **Instance type:** `t3.medium`
 - **Use case:** Pipeline with dedicated instances per stage
-
-### [`demos.yml`](demos.yml)
-Runs all demo workflows as a test suite. Useful for:
-- Regression testing after changes
-- Verifying all features work correctly
-- CI/CD validation
 
