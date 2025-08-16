@@ -1,4 +1,4 @@
-name: Demo – minimal EC2 GPU runner
+name: Demo – configurable instance for debugging
 on:
   workflow_dispatch:
   workflow_call:   # Tested by `demos.yml`
