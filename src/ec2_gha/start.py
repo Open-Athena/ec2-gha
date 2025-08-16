@@ -116,7 +116,10 @@ class StartAWS(CreateCloudInstance):
         if self.security_group_id and self.security_group_id.strip():
             params["SecurityGroupIds"] = [self.security_group_id.strip()]
         if self.iam_instance_profile != "":
+            print(f"🔧 Instance profile configured: '{self.iam_instance_profile}'")
             params["IamInstanceProfile"] = {"Name": self.iam_instance_profile}
+        else:
+            print("🔧 Instance profile is empty string, not adding to params")
         if self.key_name != "":
             params["KeyName"] = self.key_name
         # Add default tags if not already present
@@ -312,6 +315,11 @@ class StartAWS(CreateCloudInstance):
             params = self._build_aws_params(user_data_params)
             if self.root_device_size > 0:
                 params = self._modify_root_disk_size(ec2, params)
+            # Debug logging for instance profile
+            if "IamInstanceProfile" in params:
+                print(f"🔍 Attaching IAM instance profile: {params['IamInstanceProfile']['Name']}")
+            else:
+                print("⚠️ No IAM instance profile being attached")
             result = ec2.run_instances(**params)
             instances = result["Instances"]
             id = instances[0]["InstanceId"]

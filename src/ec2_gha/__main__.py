@@ -55,6 +55,11 @@ def main():
         .update_state("INPUT_REPO", "repo")               # input override
     )
     params = builder.params
+    
+    # Debug: Log instance profile value
+    print(f"🔍 INPUT_EC2_INSTANCE_PROFILE env var: '{os.environ.get('INPUT_EC2_INSTANCE_PROFILE', 'NOT SET')}'")
+    print(f"🔍 Parsed iam_instance_profile value: '{params.get('iam_instance_profile', 'NOT IN PARAMS')}'")
+    
     repo = params["repo"]
     # This needs to be handled here because the repo is required by the GitHub
     # instance
