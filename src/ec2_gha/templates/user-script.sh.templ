@@ -40,10 +40,10 @@ trap 'terminate_instance "Setup script failed with error on line $$LINENO"' ERR
 
 # Set up registration timeout failsafe
 REGISTRATION_TIMEOUT="$runner_registration_timeout"
-# Validate timeout is a number, default to 360 if not
+# Validate timeout is a number, default to 300 if not
 if ! [[ "$$REGISTRATION_TIMEOUT" =~ ^[0-9]+$$ ]]; then
-    logger "EC2-GHA: Invalid timeout '$$REGISTRATION_TIMEOUT', using default 360"
-    REGISTRATION_TIMEOUT=360
+    logger "EC2-GHA: Invalid timeout '$$REGISTRATION_TIMEOUT', using default 300"
+    REGISTRATION_TIMEOUT=300
 fi
 logger "EC2-GHA: Registration timeout set to $$REGISTRATION_TIMEOUT seconds"
 (
