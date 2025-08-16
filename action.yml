@@ -5,7 +5,7 @@ runs:
   image: "Dockerfile"
 inputs:
   aws_region:
-    description: "AWS region for EC2 instances (defaults to us-east-1)"
+    description: "AWS region for EC2 instances (falls back to vars.AWS_REGION, then us-east-1)"
     required: false
   aws_subnet_id:
     description: "AWS subnet ID (will use the account default subnet if not specified)"

@@ -76,6 +76,7 @@ def main():
     params.setdefault("runner_poll_interval", RUNNER_POLL_INTERVAL)
     params.setdefault("instance_name", INSTANCE_NAME)
     params.setdefault("instance_type", EC2_INSTANCE_TYPE)
+    params.setdefault("region_name", "us-east-1")  # Default AWS region
 
     # image_id is required - must be provided via input or vars
     if not params.get("image_id"):

@@ -26,7 +26,7 @@ on:
         type: string
         default: "test"
       aws_region:
-        description: "AWS region for EC2 instances (defaults to us-east-1)"
+        description: "AWS region for EC2 instances (falls back to vars.AWS_REGION, then us-east-1)"
         required: false
         type: string
         default: "us-east-1"
@@ -157,7 +157,7 @@ jobs:
         id: aws-start
         uses: ./
         with:
-          aws_region: ${{ inputs.aws_region }}
+          aws_region: ${{ inputs.aws_region || vars.AWS_REGION }}
           aws_tags: ${{ inputs.aws_tags }}
           cloudwatch_logs_group: ${{ inputs.cloudwatch_logs_group || vars.CLOUDWATCH_LOGS_GROUP }}
           ec2_image_id: ${{ inputs.ec2_image_id || vars.EC2_IMAGE_ID }}
