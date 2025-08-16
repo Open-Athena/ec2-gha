@@ -4,7 +4,8 @@
 
 ## Common Development Commands
 
-Don't explicitly set the `AWS_PROFILE` (e.g. to `oa-ci-dev`) in your commands; assume it's set for you out of band, verify if you need
+- Don't explicitly set the `AWS_PROFILE` (e.g. to `oa-ci-dev`) in your commands; assume it's set for you out of band, verify if you need.
+- Instance userdata (rendered form of `src/ec2_gha/templates/user-script.sh.templ`) has to stay under 16KiB.
 
 ### Testing
 ```bash
