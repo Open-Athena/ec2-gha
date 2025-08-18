@@ -282,6 +282,8 @@ echo "[$$(date)] ${log_prefix_job_started} $${GITHUB_JOB}"
 mkdir -p /var/run/github-runner-jobs
 echo '{"status":"running"}' > /var/run/github-runner-jobs/$${GITHUB_RUN_ID}-$${GITHUB_JOB}.job
 touch /var/run/github-runner-last-activity
+# Mark that at least one job has run
+touch /var/run/github-runner-has-run-job
 EOFS
 
 cat > /usr/local/bin/job-completed-hook.sh << 'EOFC'
@@ -299,10 +301,12 @@ exec >> /tmp/termination-check.log 2>&1
 source /usr/local/bin/runner-common-functions.sh
 A="/var/run/github-runner-last-activity"
 J="/var/run/github-runner-jobs"
+H="/var/run/github-runner-has-run-job"
 [ ! -f "$$A" ] && touch "$$A"
 L=$$(stat -c %Y "$$A" 2>/dev/null || echo 0)
 I=$$(($$(date +%s)-L))
-if ls $$J/*.job 2>/dev/null | grep -q .; then G=$${RUNNER_GRACE_PERIOD:-60}; else G=$${RUNNER_INITIAL_GRACE_PERIOD:-180}; fi
+# Use initial grace period only if no job has ever run
+if [ -f "$$H" ]; then G=$${RUNNER_GRACE_PERIOD:-60}; else G=$${RUNNER_INITIAL_GRACE_PERIOD:-180}; fi
 R=$$(grep -l '"status":"running"' $$J/*.job 2>/dev/null | wc -l || echo 0)
 if [ $$R -eq 0 ] && [ $$I -gt $$G ]; then
     echo "[$$(date)] Terminating: idle $$I > grace $$G, proceeding with termination"
@@ -315,7 +319,11 @@ if [ $$R -eq 0 ] && [ $$I -gt $$G ]; then
     flush_cloudwatch_logs
     sudo shutdown -h now "Runner terminating after idle timeout"
 else
-    echo "[$$(date)] Activity detected within $${CURRENT_GRACE_PERIOD} seconds, not terminating"
+    if [ $$R -gt 0 ]; then
+        echo "[$$(date)] $$R job(s) still running, not terminating"
+    else
+        echo "[$$(date)] No jobs running, idle $$I seconds (grace period: $$G seconds)"
+    fi
 fi
 EOFT
 
