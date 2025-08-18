@@ -229,6 +229,22 @@ class StartAWS(CreateCloudInstance):
         try:
             parsed = Template(template_content)
             runner_script = parsed.substitute(**kwargs)
+
+            # Strip comment lines to save space (but keep shebang lines)
+            lines = runner_script.split('\n')
+            filtered_lines = []
+            for line in lines:
+                stripped = line.strip()
+                # Keep shebang, empty lines, and non-comment lines
+                if not stripped or stripped.startswith('#!') or not stripped.startswith('#'):
+                    filtered_lines.append(line)
+
+            runner_script = '\n'.join(filtered_lines)
+
+            # Log the final size
+            script_size = len(runner_script)
+            print(f"UserData size: {script_size} bytes ({script_size/16384*100:.1f}% of 16KB limit)")
+
             return runner_script
         except Exception as e:
             raise Exception("Error parsing user data template") from e

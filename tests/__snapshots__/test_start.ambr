@@ -46,7 +46,6 @@
       log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/runner-setup.log; }
       log_error() { log "ERROR: $1" >&2; }
       
-      # Function to flush CloudWatch logs before shutdown
       flush_cloudwatch_logs() {
         log "Stopping CloudWatch agent to flush logs"
         if systemctl is-active --quiet amazon-cloudwatch-agent; then
@@ -56,7 +55,6 @@
         fi
       }
       
-      # Create common functions file
       cat > /usr/local/bin/runner-common-functions.sh << 'EOCF'
       #!/bin/bash
       log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/runner-setup.log; }
@@ -70,7 +68,6 @@
       }
       EOCF
       
-      # Get metadata (IMDSv2 compatible)
       get_metadata() {
         local path="$1"
         local token=$(curl -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 300" http://169.254.169.254/latest/api/token 2>/dev/null || true)
@@ -91,7 +88,6 @@
         log "FATAL: $reason"
         log "Terminating instance $INSTANCE_ID due to setup failure"
       
-        # Try to remove runner if it was partially configured
         if [ -f "$homedir/config.sh" ] && [ -n "${RUNNER_TOKEN:-}" ]; then
           cd "$homedir" && ./config.sh remove --token "${RUNNER_TOKEN}" || true
         fi
@@ -101,12 +97,9 @@
         exit 1
       }
       
-      # Trap errors and ensure termination on failure
       trap 'terminate_instance "Setup script failed with error on line $LINENO"' ERR
       
-      # Set up registration timeout failsafe
       REGISTRATION_TIMEOUT="300"
-      # Validate timeout is a number, default to 300 if not
       if ! [[ "$REGISTRATION_TIMEOUT" =~ ^[0-9]+$ ]]; then
         logger "EC2-GHA: Invalid timeout '$REGISTRATION_TIMEOUT', using default 300"
         REGISTRATION_TIMEOUT=300
@@ -124,18 +117,13 @@
       ) &
       REGISTRATION_WATCHDOG_PID=$!
       log "Watchdog PID: $REGISTRATION_WATCHDOG_PID"
-      # Save watchdog PID to file so it survives exec redirect
       echo $REGISTRATION_WATCHDOG_PID > /var/run/github-runner-watchdog.pid
       
       
       
-      # Initialize homedir from template variable
       homedir="/home/ec2-user"
       
-      # Determine home directory if not specified or set to AUTO
       if [ -z "$homedir" ] || [ "$homedir" = "AUTO" ]; then
-        # Try to find the default non-root user's home directory
-        # Check for common cloud-init created users
         for user in ubuntu ec2-user centos admin debian fedora alpine arch; do
           if id "$user" &>/dev/null; then
             homedir="/home/$user"
@@ -144,9 +132,7 @@
           fi
         done
       
-        # Fallback if no standard user found
         if [ -z "$homedir" ] || [ "$homedir" = "AUTO" ]; then
-          # Get the first non-root user's home directory that actually exists
           homedir=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 && $6 ~ /^\/home\// {print $6}' | while read dir; do
             if [ -d "$dir" ]; then
               echo "$dir"
@@ -158,7 +144,6 @@
             homedir="/home/ec2-user"  # Ultimate fallback
             log "Using fallback: $homedir"
           else
-            # Use stat to get the actual owner of the directory
             owner=$(stat -c "%U" "$homedir" 2>/dev/null || stat -f "%Su" "$homedir" 2>/dev/null)
             log "Detected: $homedir ($owner)"
           fi
@@ -167,30 +152,24 @@
         log "Using: $homedir"
       fi
       
-      # Fetch instance metadata before redirecting output
       INSTANCE_TYPE=$(get_metadata "instance-type")
       INSTANCE_ID=$(get_metadata "instance-id")
       REGION=$(get_metadata "placement/region")
       AZ=$(get_metadata "placement/availability-zone")
       
-      # Redirect runner setup logs to a file for CloudWatch
       exec >> /var/log/runner-setup.log 2>&1
       log "Starting runner setup"
       
       log "Instance metadata: Type=${INSTANCE_TYPE} ID=${INSTANCE_ID} Region=${REGION} AZ=${AZ}"
       
-      # Set up maximum lifetime timeout - do this early to ensure cleanup
       MAX_LIFETIME_MINUTES=360
       log "Setting up maximum lifetime timeout: ${MAX_LIFETIME_MINUTES} minutes"
       nohup bash -c "sleep ${MAX_LIFETIME_MINUTES}m && echo '[$(date)] Maximum lifetime reached' && shutdown -h now" > /var/log/max-lifetime.log 2>&1 &
       
-      # Configure CloudWatch Logs if enabled
       if [ "" != "" ]; then
         log "Installing CloudWatch agent"
-        # Use a subshell to prevent CloudWatch failures from stopping the entire script
         (
       
-          # Wait for dpkg lock to be released (up to 2 minutes)
           log "Waiting for dpkg lock to be released..."
           timeout=120
           while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
@@ -203,12 +182,10 @@
             timeout=$((timeout - 5))
           done
       
-          # Download and install CloudWatch agent
           wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
           dpkg -i -E ./amazon-cloudwatch-agent.deb
           rm amazon-cloudwatch-agent.deb
       
-          # Configure CloudWatch agent
           cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
       {
         "agent": {
@@ -231,7 +208,6 @@
       }
       EOF
       
-          # Start CloudWatch agent
           /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
             -a fetch-config \
             -m ec2 \
@@ -242,22 +218,17 @@
         ) || log "WARNING: CloudWatch agent installation failed, continuing without it"
       fi
       
-      # Configure SSH access if public key provided
       if [ -n "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host" ]; then
         log "Configuring SSH access"
       
-        # Determine the default user based on the home directory owner
         DEFAULT_USER=$(stat -c "%U" "$homedir" 2>/dev/null || echo "root")
       
-        # Create .ssh directory if it doesn't exist
         mkdir -p "/home/ec2-user/.ssh"
         chmod 700 "/home/ec2-user/.ssh"
       
-        # Add the public key to authorized_keys
         echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host" >> "$homedir/.ssh/authorized_keys"
         chmod 600 "$homedir/.ssh/authorized_keys"
       
-        # Set proper ownership
         if [ "$DEFAULT_USER" != "root" ]; then
           chown -R "$DEFAULT_USER:$DEFAULT_USER" "$homedir/.ssh"
         fi
@@ -272,10 +243,8 @@
       log "Running pre-runner script"
       source pre-runner-script.sh
       export RUNNER_ALLOW_RUNASROOT=1
-      # Detect architecture and download appropriate runner
       ARCH=$(uname -m)
       if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-        # For ARM, replace x64 with arm64 in the URL
         RUNNER_URL=$(echo "test.tar.gz" | sed 's/x64/arm64/g')
         log "ARM detected, using: $RUNNER_URL"
       else
@@ -284,9 +253,7 @@
       fi
       curl -L $RUNNER_URL -o runner.tar.gz
       log "Extracting runner"
-      # `--no-overwrite-dir` is important, otherwise `$homedir` ends up `chown`'d to `1001:docker`, and `sshd` will refuse connection attempts to `$homedir`
       tar --no-overwrite-dir -xzf runner.tar.gz
-      # Create job tracking scripts
       cat > /usr/local/bin/job-started-hook.sh << 'EOFS'
       #!/bin/bash
       exec >> /tmp/job-started-hook.log 2>&1
@@ -332,7 +299,6 @@
       
       chmod +x /usr/local/bin/runner-common-functions.sh /usr/local/bin/job-started-hook.sh /usr/local/bin/job-completed-hook.sh /usr/local/bin/check-runner-termination.sh
       
-      # Set up runner hooks
       echo "ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/job-started-hook.sh" > .env
       echo "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/job-completed-hook.sh" >> .env
       echo "RUNNER_HOME=$homedir" >> .env
@@ -340,13 +306,10 @@
       echo "RUNNER_INITIAL_GRACE_PERIOD=181" >> .env
       echo "RUNNER_POLL_INTERVAL=11" >> .env
       
-      # Set up job tracking directory
       mkdir -p /var/run/github-runner-jobs
       
-      # Create initial activity timestamp
       touch /var/run/github-runner-last-activity
       
-      # Set up periodic termination check using systemd
       cat > /etc/systemd/system/runner-termination-check.service << 'EOF'
       [Unit]
       Description=Check GitHub runner termination conditions
@@ -370,27 +333,20 @@
       WantedBy=timers.target
       EOF
       
-      # Enable and start the timer
       systemctl daemon-reload
       systemctl enable runner-termination-check.timer
       systemctl start runner-termination-check.timer
       
-      # Get instance metadata for descriptive runner name
       INSTANCE_ID=$(get_metadata "instance-id")
       INSTANCE_TYPE=$(get_metadata "instance-type")
       
-      # Create runner name with just the instance ID for uniqueness
       RUNNER_NAME="ec2-${INSTANCE_ID}"
       
-      # Build additional labels with metadata for easier correlation
-      # These will be visible in the GitHub runner management UI
       METADATA_LABELS=""
       METADATA_LABELS="${METADATA_LABELS},instance-id:${INSTANCE_ID}"
       METADATA_LABELS="${METADATA_LABELS},instance-type:${INSTANCE_TYPE}"
       
-      # Add GitHub workflow metadata passed from the action
       if [ -n "CI" ]; then
-        # Replace spaces and special chars in workflow name for label compatibility
         WORKFLOW_LABEL=$(echo "CI" | tr ' /' '-' | tr -cd '[:alnum:]-_')
         METADATA_LABELS="${METADATA_LABELS},workflow:${WORKFLOW_LABEL}"
       fi
@@ -401,18 +357,13 @@
         METADATA_LABELS="${METADATA_LABELS},run-number:1"
       fi
       
-      # Combine provided labels (user + runner-xxx) with instance metadata labels
-      # The label variable already contains user labels and the critical runner-xxx label from Python
       ALL_LABELS="label${METADATA_LABELS}"
       
       log "Configuring runner for repo: omsf-eco-infra/awsinfratesting"
       log "Runner name: ${RUNNER_NAME}"
       log "Labels: ${ALL_LABELS}"
-      # Export token for error handler
       export RUNNER_TOKEN="test"
       
-      # Attempt to register. If a runner with the same name exists, config.sh will fail
-      # We use --unattended to prevent interactive prompts
       if ! ./config.sh --url https://github.com/omsf-eco-infra/awsinfratesting --token test --labels "${ALL_LABELS}" --name "${RUNNER_NAME}" --disableupdate --unattended; then
         log_error "Failed to register runner '${RUNNER_NAME}'"
         log_error "This usually means a runner with this name already exists"
@@ -421,11 +372,9 @@
       fi
       log "Runner registered successfully"
       
-      # Mark registration as complete and kill the watchdog
       log "Creating registration marker"
       touch /var/run/github-runner-registered
       ls -la /var/run/github-runner-registered
-      # Read watchdog PID from file (survives exec redirect)
       if [ -f /var/run/github-runner-watchdog.pid ]; then
         WATCHDOG_PID=$(cat /var/run/github-runner-watchdog.pid)
         if kill -0 $WATCHDOG_PID 2>/dev/null; then
@@ -438,16 +387,10 @@
       fi
       
       log "Starting runner"
-      # Create marker file for cleanup service
       touch /var/run/github-runner-started
-      # Ensure CloudWatch agent can read diagnostic logs
-      # The cwagent user needs to traverse into /home/ec2-user to reach _diag
-      # Make /home/ec2-user world-executable (but not readable) so cwagent can traverse it
       chmod o+x $homedir
       log "Made $homedir traversable for CloudWatch agent"
-      # Create _diag directory if it doesn't exist
       mkdir -p $homedir/_diag
-      # The _diag files are already world-readable by default, just ensure the directory is too
       chmod 755 $homedir/_diag
       ./run.sh
   
@@ -497,7 +440,6 @@
       log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/runner-setup.log; }
       log_error() { log "ERROR: $1" >&2; }
       
-      # Function to flush CloudWatch logs before shutdown
       flush_cloudwatch_logs() {
         log "Stopping CloudWatch agent to flush logs"
         if systemctl is-active --quiet amazon-cloudwatch-agent; then
@@ -507,7 +449,6 @@
         fi
       }
       
-      # Create common functions file
       cat > /usr/local/bin/runner-common-functions.sh << 'EOCF'
       #!/bin/bash
       log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/runner-setup.log; }
@@ -521,7 +462,6 @@
       }
       EOCF
       
-      # Get metadata (IMDSv2 compatible)
       get_metadata() {
         local path="$1"
         local token=$(curl -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 300" http://169.254.169.254/latest/api/token 2>/dev/null || true)
@@ -542,7 +482,6 @@
         log "FATAL: $reason"
         log "Terminating instance $INSTANCE_ID due to setup failure"
       
-        # Try to remove runner if it was partially configured
         if [ -f "$homedir/config.sh" ] && [ -n "${RUNNER_TOKEN:-}" ]; then
           cd "$homedir" && ./config.sh remove --token "${RUNNER_TOKEN}" || true
         fi
@@ -552,12 +491,9 @@
         exit 1
       }
       
-      # Trap errors and ensure termination on failure
       trap 'terminate_instance "Setup script failed with error on line $LINENO"' ERR
       
-      # Set up registration timeout failsafe
       REGISTRATION_TIMEOUT="300"
-      # Validate timeout is a number, default to 300 if not
       if ! [[ "$REGISTRATION_TIMEOUT" =~ ^[0-9]+$ ]]; then
         logger "EC2-GHA: Invalid timeout '$REGISTRATION_TIMEOUT', using default 300"
         REGISTRATION_TIMEOUT=300
@@ -575,18 +511,13 @@
       ) &
       REGISTRATION_WATCHDOG_PID=$!
       log "Watchdog PID: $REGISTRATION_WATCHDOG_PID"
-      # Save watchdog PID to file so it survives exec redirect
       echo $REGISTRATION_WATCHDOG_PID > /var/run/github-runner-watchdog.pid
       
       
       
-      # Initialize homedir from template variable
       homedir="/home/ec2-user"
       
-      # Determine home directory if not specified or set to AUTO
       if [ -z "$homedir" ] || [ "$homedir" = "AUTO" ]; then
-        # Try to find the default non-root user's home directory
-        # Check for common cloud-init created users
         for user in ubuntu ec2-user centos admin debian fedora alpine arch; do
           if id "$user" &>/dev/null; then
             homedir="/home/$user"
@@ -595,9 +526,7 @@
           fi
         done
       
-        # Fallback if no standard user found
         if [ -z "$homedir" ] || [ "$homedir" = "AUTO" ]; then
-          # Get the first non-root user's home directory that actually exists
           homedir=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 && $6 ~ /^\/home\// {print $6}' | while read dir; do
             if [ -d "$dir" ]; then
               echo "$dir"
@@ -609,7 +538,6 @@
             homedir="/home/ec2-user"  # Ultimate fallback
             log "Using fallback: $homedir"
           else
-            # Use stat to get the actual owner of the directory
             owner=$(stat -c "%U" "$homedir" 2>/dev/null || stat -f "%Su" "$homedir" 2>/dev/null)
             log "Detected: $homedir ($owner)"
           fi
@@ -618,30 +546,24 @@
         log "Using: $homedir"
       fi
       
-      # Fetch instance metadata before redirecting output
       INSTANCE_TYPE=$(get_metadata "instance-type")
       INSTANCE_ID=$(get_metadata "instance-id")
       REGION=$(get_metadata "placement/region")
       AZ=$(get_metadata "placement/availability-zone")
       
-      # Redirect runner setup logs to a file for CloudWatch
       exec >> /var/log/runner-setup.log 2>&1
       log "Starting runner setup"
       
       log "Instance metadata: Type=${INSTANCE_TYPE} ID=${INSTANCE_ID} Region=${REGION} AZ=${AZ}"
       
-      # Set up maximum lifetime timeout - do this early to ensure cleanup
       MAX_LIFETIME_MINUTES=360
       log "Setting up maximum lifetime timeout: ${MAX_LIFETIME_MINUTES} minutes"
       nohup bash -c "sleep ${MAX_LIFETIME_MINUTES}m && echo '[$(date)] Maximum lifetime reached' && shutdown -h now" > /var/log/max-lifetime.log 2>&1 &
       
-      # Configure CloudWatch Logs if enabled
       if [ "" != "" ]; then
         log "Installing CloudWatch agent"
-        # Use a subshell to prevent CloudWatch failures from stopping the entire script
         (
       
-          # Wait for dpkg lock to be released (up to 2 minutes)
           log "Waiting for dpkg lock to be released..."
           timeout=120
           while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
@@ -654,12 +576,10 @@
             timeout=$((timeout - 5))
           done
       
-          # Download and install CloudWatch agent
           wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
           dpkg -i -E ./amazon-cloudwatch-agent.deb
           rm amazon-cloudwatch-agent.deb
       
-          # Configure CloudWatch agent
           cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
       {
         "agent": {
@@ -682,7 +602,6 @@
       }
       EOF
       
-          # Start CloudWatch agent
           /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
             -a fetch-config \
             -m ec2 \
@@ -693,22 +612,17 @@
         ) || log "WARNING: CloudWatch agent installation failed, continuing without it"
       fi
       
-      # Configure SSH access if public key provided
       if [ -n "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host" ]; then
         log "Configuring SSH access"
       
-        # Determine the default user based on the home directory owner
         DEFAULT_USER=$(stat -c "%U" "$homedir" 2>/dev/null || echo "root")
       
-        # Create .ssh directory if it doesn't exist
         mkdir -p "/home/ec2-user/.ssh"
         chmod 700 "/home/ec2-user/.ssh"
       
-        # Add the public key to authorized_keys
         echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host" >> "$homedir/.ssh/authorized_keys"
         chmod 600 "$homedir/.ssh/authorized_keys"
       
-        # Set proper ownership
         if [ "$DEFAULT_USER" != "root" ]; then
           chown -R "$DEFAULT_USER:$DEFAULT_USER" "$homedir/.ssh"
         fi
@@ -723,10 +637,8 @@
       log "Running pre-runner script"
       source pre-runner-script.sh
       export RUNNER_ALLOW_RUNASROOT=1
-      # Detect architecture and download appropriate runner
       ARCH=$(uname -m)
       if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-        # For ARM, replace x64 with arm64 in the URL
         RUNNER_URL=$(echo "test.tar.gz" | sed 's/x64/arm64/g')
         log "ARM detected, using: $RUNNER_URL"
       else
@@ -735,9 +647,7 @@
       fi
       curl -L $RUNNER_URL -o runner.tar.gz
       log "Extracting runner"
-      # `--no-overwrite-dir` is important, otherwise `$homedir` ends up `chown`'d to `1001:docker`, and `sshd` will refuse connection attempts to `$homedir`
       tar --no-overwrite-dir -xzf runner.tar.gz
-      # Create job tracking scripts
       cat > /usr/local/bin/job-started-hook.sh << 'EOFS'
       #!/bin/bash
       exec >> /tmp/job-started-hook.log 2>&1
@@ -783,7 +693,6 @@
       
       chmod +x /usr/local/bin/runner-common-functions.sh /usr/local/bin/job-started-hook.sh /usr/local/bin/job-completed-hook.sh /usr/local/bin/check-runner-termination.sh
       
-      # Set up runner hooks
       echo "ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/job-started-hook.sh" > .env
       echo "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/job-completed-hook.sh" >> .env
       echo "RUNNER_HOME=$homedir" >> .env
@@ -791,13 +700,10 @@
       echo "RUNNER_INITIAL_GRACE_PERIOD=181" >> .env
       echo "RUNNER_POLL_INTERVAL=11" >> .env
       
-      # Set up job tracking directory
       mkdir -p /var/run/github-runner-jobs
       
-      # Create initial activity timestamp
       touch /var/run/github-runner-last-activity
       
-      # Set up periodic termination check using systemd
       cat > /etc/systemd/system/runner-termination-check.service << 'EOF'
       [Unit]
       Description=Check GitHub runner termination conditions
@@ -821,27 +727,20 @@
       WantedBy=timers.target
       EOF
       
-      # Enable and start the timer
       systemctl daemon-reload
       systemctl enable runner-termination-check.timer
       systemctl start runner-termination-check.timer
       
-      # Get instance metadata for descriptive runner name
       INSTANCE_ID=$(get_metadata "instance-id")
       INSTANCE_TYPE=$(get_metadata "instance-type")
       
-      # Create runner name with just the instance ID for uniqueness
       RUNNER_NAME="ec2-${INSTANCE_ID}"
       
-      # Build additional labels with metadata for easier correlation
-      # These will be visible in the GitHub runner management UI
       METADATA_LABELS=""
       METADATA_LABELS="${METADATA_LABELS},instance-id:${INSTANCE_ID}"
       METADATA_LABELS="${METADATA_LABELS},instance-type:${INSTANCE_TYPE}"
       
-      # Add GitHub workflow metadata passed from the action
       if [ -n "CI" ]; then
-        # Replace spaces and special chars in workflow name for label compatibility
         WORKFLOW_LABEL=$(echo "CI" | tr ' /' '-' | tr -cd '[:alnum:]-_')
         METADATA_LABELS="${METADATA_LABELS},workflow:${WORKFLOW_LABEL}"
       fi
@@ -852,18 +751,13 @@
         METADATA_LABELS="${METADATA_LABELS},run-number:42"
       fi
       
-      # Combine provided labels (user + runner-xxx) with instance metadata labels
-      # The label variable already contains user labels and the critical runner-xxx label from Python
       ALL_LABELS="label${METADATA_LABELS}"
       
       log "Configuring runner for repo: omsf-eco-infra/awsinfratesting"
       log "Runner name: ${RUNNER_NAME}"
       log "Labels: ${ALL_LABELS}"
-      # Export token for error handler
       export RUNNER_TOKEN="test"
       
-      # Attempt to register. If a runner with the same name exists, config.sh will fail
-      # We use --unattended to prevent interactive prompts
       if ! ./config.sh --url https://github.com/omsf-eco-infra/awsinfratesting --token test --labels "${ALL_LABELS}" --name "${RUNNER_NAME}" --disableupdate --unattended; then
         log_error "Failed to register runner '${RUNNER_NAME}'"
         log_error "This usually means a runner with this name already exists"
@@ -872,11 +766,9 @@
       fi
       log "Runner registered successfully"
       
-      # Mark registration as complete and kill the watchdog
       log "Creating registration marker"
       touch /var/run/github-runner-registered
       ls -la /var/run/github-runner-registered
-      # Read watchdog PID from file (survives exec redirect)
       if [ -f /var/run/github-runner-watchdog.pid ]; then
         WATCHDOG_PID=$(cat /var/run/github-runner-watchdog.pid)
         if kill -0 $WATCHDOG_PID 2>/dev/null; then
@@ -889,16 +781,10 @@
       fi
       
       log "Starting runner"
-      # Create marker file for cleanup service
       touch /var/run/github-runner-started
-      # Ensure CloudWatch agent can read diagnostic logs
-      # The cwagent user needs to traverse into /home/ec2-user to reach _diag
-      # Make /home/ec2-user world-executable (but not readable) so cwagent can traverse it
       chmod o+x $homedir
       log "Made $homedir traversable for CloudWatch agent"
-      # Create _diag directory if it doesn't exist
       mkdir -p $homedir/_diag
-      # The _diag files are already world-readable by default, just ensure the directory is too
       chmod 755 $homedir/_diag
       ./run.sh
   
@@ -912,7 +798,6 @@
   log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/runner-setup.log; }
   log_error() { log "ERROR: $1" >&2; }
   
-  # Function to flush CloudWatch logs before shutdown
   flush_cloudwatch_logs() {
     log "Stopping CloudWatch agent to flush logs"
     if systemctl is-active --quiet amazon-cloudwatch-agent; then
@@ -922,7 +807,6 @@
     fi
   }
   
-  # Create common functions file
   cat > /usr/local/bin/runner-common-functions.sh << 'EOCF'
   #!/bin/bash
   log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/runner-setup.log; }
@@ -936,7 +820,6 @@
   }
   EOCF
   
-  # Get metadata (IMDSv2 compatible)
   get_metadata() {
     local path="$1"
     local token=$(curl -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 300" http://169.254.169.254/latest/api/token 2>/dev/null || true)
@@ -957,7 +840,6 @@
     log "FATAL: $reason"
     log "Terminating instance $INSTANCE_ID due to setup failure"
   
-    # Try to remove runner if it was partially configured
     if [ -f "$homedir/config.sh" ] && [ -n "${RUNNER_TOKEN:-}" ]; then
       cd "$homedir" && ./config.sh remove --token "${RUNNER_TOKEN}" || true
     fi
@@ -967,12 +849,9 @@
     exit 1
   }
   
-  # Trap errors and ensure termination on failure
   trap 'terminate_instance "Setup script failed with error on line $LINENO"' ERR
   
-  # Set up registration timeout failsafe
   REGISTRATION_TIMEOUT="300"
-  # Validate timeout is a number, default to 300 if not
   if ! [[ "$REGISTRATION_TIMEOUT" =~ ^[0-9]+$ ]]; then
     logger "EC2-GHA: Invalid timeout '$REGISTRATION_TIMEOUT', using default 300"
     REGISTRATION_TIMEOUT=300
@@ -990,18 +869,13 @@
   ) &
   REGISTRATION_WATCHDOG_PID=$!
   log "Watchdog PID: $REGISTRATION_WATCHDOG_PID"
-  # Save watchdog PID to file so it survives exec redirect
   echo $REGISTRATION_WATCHDOG_PID > /var/run/github-runner-watchdog.pid
   
   
   
-  # Initialize homedir from template variable
   homedir="/home/ec2-user"
   
-  # Determine home directory if not specified or set to AUTO
   if [ -z "$homedir" ] || [ "$homedir" = "AUTO" ]; then
-    # Try to find the default non-root user's home directory
-    # Check for common cloud-init created users
     for user in ubuntu ec2-user centos admin debian fedora alpine arch; do
       if id "$user" &>/dev/null; then
         homedir="/home/$user"
@@ -1010,9 +884,7 @@
       fi
     done
   
-    # Fallback if no standard user found
     if [ -z "$homedir" ] || [ "$homedir" = "AUTO" ]; then
-      # Get the first non-root user's home directory that actually exists
       homedir=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 && $6 ~ /^\/home\// {print $6}' | while read dir; do
         if [ -d "$dir" ]; then
           echo "$dir"
@@ -1024,7 +896,6 @@
         homedir="/home/ec2-user"  # Ultimate fallback
         log "Using fallback: $homedir"
       else
-        # Use stat to get the actual owner of the directory
         owner=$(stat -c "%U" "$homedir" 2>/dev/null || stat -f "%Su" "$homedir" 2>/dev/null)
         log "Detected: $homedir ($owner)"
       fi
@@ -1033,30 +904,24 @@
     log "Using: $homedir"
   fi
   
-  # Fetch instance metadata before redirecting output
   INSTANCE_TYPE=$(get_metadata "instance-type")
   INSTANCE_ID=$(get_metadata "instance-id")
   REGION=$(get_metadata "placement/region")
   AZ=$(get_metadata "placement/availability-zone")
   
-  # Redirect runner setup logs to a file for CloudWatch
   exec >> /var/log/runner-setup.log 2>&1
   log "Starting runner setup"
   
   log "Instance metadata: Type=${INSTANCE_TYPE} ID=${INSTANCE_ID} Region=${REGION} AZ=${AZ}"
   
-  # Set up maximum lifetime timeout - do this early to ensure cleanup
   MAX_LIFETIME_MINUTES=360
   log "Setting up maximum lifetime timeout: ${MAX_LIFETIME_MINUTES} minutes"
   nohup bash -c "sleep ${MAX_LIFETIME_MINUTES}m && echo '[$(date)] Maximum lifetime reached' && shutdown -h now" > /var/log/max-lifetime.log 2>&1 &
   
-  # Configure CloudWatch Logs if enabled
   if [ "" != "" ]; then
     log "Installing CloudWatch agent"
-    # Use a subshell to prevent CloudWatch failures from stopping the entire script
     (
   
-      # Wait for dpkg lock to be released (up to 2 minutes)
       log "Waiting for dpkg lock to be released..."
       timeout=120
       while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
@@ -1069,12 +934,10 @@
         timeout=$((timeout - 5))
       done
   
-      # Download and install CloudWatch agent
       wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
       dpkg -i -E ./amazon-cloudwatch-agent.deb
       rm amazon-cloudwatch-agent.deb
   
-      # Configure CloudWatch agent
       cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
   {
     "agent": {
@@ -1097,7 +960,6 @@
   }
   EOF
   
-      # Start CloudWatch agent
       /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
         -a fetch-config \
         -m ec2 \
@@ -1108,22 +970,17 @@
     ) || log "WARNING: CloudWatch agent installation failed, continuing without it"
   fi
   
-  # Configure SSH access if public key provided
   if [ -n "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host" ]; then
     log "Configuring SSH access"
   
-    # Determine the default user based on the home directory owner
     DEFAULT_USER=$(stat -c "%U" "$homedir" 2>/dev/null || echo "root")
   
-    # Create .ssh directory if it doesn't exist
     mkdir -p "/home/ec2-user/.ssh"
     chmod 700 "/home/ec2-user/.ssh"
   
-    # Add the public key to authorized_keys
     echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host" >> "$homedir/.ssh/authorized_keys"
     chmod 600 "$homedir/.ssh/authorized_keys"
   
-    # Set proper ownership
     if [ "$DEFAULT_USER" != "root" ]; then
       chown -R "$DEFAULT_USER:$DEFAULT_USER" "$homedir/.ssh"
     fi
@@ -1138,10 +995,8 @@
   log "Running pre-runner script"
   source pre-runner-script.sh
   export RUNNER_ALLOW_RUNASROOT=1
-  # Detect architecture and download appropriate runner
   ARCH=$(uname -m)
   if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-    # For ARM, replace x64 with arm64 in the URL
     RUNNER_URL=$(echo "test.tar.gz" | sed 's/x64/arm64/g')
     log "ARM detected, using: $RUNNER_URL"
   else
@@ -1150,9 +1005,7 @@
   fi
   curl -L $RUNNER_URL -o runner.tar.gz
   log "Extracting runner"
-  # `--no-overwrite-dir` is important, otherwise `$homedir` ends up `chown`'d to `1001:docker`, and `sshd` will refuse connection attempts to `$homedir`
   tar --no-overwrite-dir -xzf runner.tar.gz
-  # Create job tracking scripts
   cat > /usr/local/bin/job-started-hook.sh << 'EOFS'
   #!/bin/bash
   exec >> /tmp/job-started-hook.log 2>&1
@@ -1198,7 +1051,6 @@
   
   chmod +x /usr/local/bin/runner-common-functions.sh /usr/local/bin/job-started-hook.sh /usr/local/bin/job-completed-hook.sh /usr/local/bin/check-runner-termination.sh
   
-  # Set up runner hooks
   echo "ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/job-started-hook.sh" > .env
   echo "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/job-completed-hook.sh" >> .env
   echo "RUNNER_HOME=$homedir" >> .env
@@ -1206,13 +1058,10 @@
   echo "RUNNER_INITIAL_GRACE_PERIOD=181" >> .env
   echo "RUNNER_POLL_INTERVAL=11" >> .env
   
-  # Set up job tracking directory
   mkdir -p /var/run/github-runner-jobs
   
-  # Create initial activity timestamp
   touch /var/run/github-runner-last-activity
   
-  # Set up periodic termination check using systemd
   cat > /etc/systemd/system/runner-termination-check.service << 'EOF'
   [Unit]
   Description=Check GitHub runner termination conditions
@@ -1236,27 +1085,20 @@
   WantedBy=timers.target
   EOF
   
-  # Enable and start the timer
   systemctl daemon-reload
   systemctl enable runner-termination-check.timer
   systemctl start runner-termination-check.timer
   
-  # Get instance metadata for descriptive runner name
   INSTANCE_ID=$(get_metadata "instance-id")
   INSTANCE_TYPE=$(get_metadata "instance-type")
   
-  # Create runner name with just the instance ID for uniqueness
   RUNNER_NAME="ec2-${INSTANCE_ID}"
   
-  # Build additional labels with metadata for easier correlation
-  # These will be visible in the GitHub runner management UI
   METADATA_LABELS=""
   METADATA_LABELS="${METADATA_LABELS},instance-id:${INSTANCE_ID}"
   METADATA_LABELS="${METADATA_LABELS},instance-type:${INSTANCE_TYPE}"
   
-  # Add GitHub workflow metadata passed from the action
   if [ -n "CI" ]; then
-    # Replace spaces and special chars in workflow name for label compatibility
     WORKFLOW_LABEL=$(echo "CI" | tr ' /' '-' | tr -cd '[:alnum:]-_')
     METADATA_LABELS="${METADATA_LABELS},workflow:${WORKFLOW_LABEL}"
   fi
@@ -1267,18 +1109,13 @@
     METADATA_LABELS="${METADATA_LABELS},run-number:42"
   fi
   
-  # Combine provided labels (user + runner-xxx) with instance metadata labels
-  # The label variable already contains user labels and the critical runner-xxx label from Python
   ALL_LABELS="label${METADATA_LABELS}"
   
   log "Configuring runner for repo: omsf-eco-infra/awsinfratesting"
   log "Runner name: ${RUNNER_NAME}"
   log "Labels: ${ALL_LABELS}"
-  # Export token for error handler
   export RUNNER_TOKEN="test"
   
-  # Attempt to register. If a runner with the same name exists, config.sh will fail
-  # We use --unattended to prevent interactive prompts
   if ! ./config.sh --url https://github.com/omsf-eco-infra/awsinfratesting --token test --labels "${ALL_LABELS}" --name "${RUNNER_NAME}" --disableupdate --unattended; then
     log_error "Failed to register runner '${RUNNER_NAME}'"
     log_error "This usually means a runner with this name already exists"
@@ -1287,11 +1124,9 @@
   fi
   log "Runner registered successfully"
   
-  # Mark registration as complete and kill the watchdog
   log "Creating registration marker"
   touch /var/run/github-runner-registered
   ls -la /var/run/github-runner-registered
-  # Read watchdog PID from file (survives exec redirect)
   if [ -f /var/run/github-runner-watchdog.pid ]; then
     WATCHDOG_PID=$(cat /var/run/github-runner-watchdog.pid)
     if kill -0 $WATCHDOG_PID 2>/dev/null; then
@@ -1304,16 +1139,10 @@
   fi
   
   log "Starting runner"
-  # Create marker file for cleanup service
   touch /var/run/github-runner-started
-  # Ensure CloudWatch agent can read diagnostic logs
-  # The cwagent user needs to traverse into /home/ec2-user to reach _diag
-  # Make /home/ec2-user world-executable (but not readable) so cwagent can traverse it
   chmod o+x $homedir
   log "Made $homedir traversable for CloudWatch agent"
-  # Create _diag directory if it doesn't exist
   mkdir -p $homedir/_diag
-  # The _diag files are already world-readable by default, just ensure the directory is too
   chmod 755 $homedir/_diag
   ./run.sh
   
@@ -1326,7 +1155,6 @@
   log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/runner-setup.log; }
   log_error() { log "ERROR: $1" >&2; }
   
-  # Function to flush CloudWatch logs before shutdown
   flush_cloudwatch_logs() {
     log "Stopping CloudWatch agent to flush logs"
     if systemctl is-active --quiet amazon-cloudwatch-agent; then
@@ -1336,7 +1164,6 @@
     fi
   }
   
-  # Create common functions file
   cat > /usr/local/bin/runner-common-functions.sh << 'EOCF'
   #!/bin/bash
   log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/runner-setup.log; }
@@ -1350,7 +1177,6 @@
   }
   EOCF
   
-  # Get metadata (IMDSv2 compatible)
   get_metadata() {
     local path="$1"
     local token=$(curl -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 300" http://169.254.169.254/latest/api/token 2>/dev/null || true)
@@ -1371,7 +1197,6 @@
     log "FATAL: $reason"
     log "Terminating instance $INSTANCE_ID due to setup failure"
   
-    # Try to remove runner if it was partially configured
     if [ -f "$homedir/config.sh" ] && [ -n "${RUNNER_TOKEN:-}" ]; then
       cd "$homedir" && ./config.sh remove --token "${RUNNER_TOKEN}" || true
     fi
@@ -1381,12 +1206,9 @@
     exit 1
   }
   
-  # Trap errors and ensure termination on failure
   trap 'terminate_instance "Setup script failed with error on line $LINENO"' ERR
   
-  # Set up registration timeout failsafe
   REGISTRATION_TIMEOUT="300"
-  # Validate timeout is a number, default to 300 if not
   if ! [[ "$REGISTRATION_TIMEOUT" =~ ^[0-9]+$ ]]; then
     logger "EC2-GHA: Invalid timeout '$REGISTRATION_TIMEOUT', using default 300"
     REGISTRATION_TIMEOUT=300
@@ -1404,18 +1226,13 @@
   ) &
   REGISTRATION_WATCHDOG_PID=$!
   log "Watchdog PID: $REGISTRATION_WATCHDOG_PID"
-  # Save watchdog PID to file so it survives exec redirect
   echo $REGISTRATION_WATCHDOG_PID > /var/run/github-runner-watchdog.pid
   
   
   
-  # Initialize homedir from template variable
   homedir="/home/ec2-user"
   
-  # Determine home directory if not specified or set to AUTO
   if [ -z "$homedir" ] || [ "$homedir" = "AUTO" ]; then
-    # Try to find the default non-root user's home directory
-    # Check for common cloud-init created users
     for user in ubuntu ec2-user centos admin debian fedora alpine arch; do
       if id "$user" &>/dev/null; then
         homedir="/home/$user"
@@ -1424,9 +1241,7 @@
       fi
     done
   
-    # Fallback if no standard user found
     if [ -z "$homedir" ] || [ "$homedir" = "AUTO" ]; then
-      # Get the first non-root user's home directory that actually exists
       homedir=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 && $6 ~ /^\/home\// {print $6}' | while read dir; do
         if [ -d "$dir" ]; then
           echo "$dir"
@@ -1438,7 +1253,6 @@
         homedir="/home/ec2-user"  # Ultimate fallback
         log "Using fallback: $homedir"
       else
-        # Use stat to get the actual owner of the directory
         owner=$(stat -c "%U" "$homedir" 2>/dev/null || stat -f "%Su" "$homedir" 2>/dev/null)
         log "Detected: $homedir ($owner)"
       fi
@@ -1447,30 +1261,24 @@
     log "Using: $homedir"
   fi
   
-  # Fetch instance metadata before redirecting output
   INSTANCE_TYPE=$(get_metadata "instance-type")
   INSTANCE_ID=$(get_metadata "instance-id")
   REGION=$(get_metadata "placement/region")
   AZ=$(get_metadata "placement/availability-zone")
   
-  # Redirect runner setup logs to a file for CloudWatch
   exec >> /var/log/runner-setup.log 2>&1
   log "Starting runner setup"
   
   log "Instance metadata: Type=${INSTANCE_TYPE} ID=${INSTANCE_ID} Region=${REGION} AZ=${AZ}"
   
-  # Set up maximum lifetime timeout - do this early to ensure cleanup
   MAX_LIFETIME_MINUTES=360
   log "Setting up maximum lifetime timeout: ${MAX_LIFETIME_MINUTES} minutes"
   nohup bash -c "sleep ${MAX_LIFETIME_MINUTES}m && echo '[$(date)] Maximum lifetime reached' && shutdown -h now" > /var/log/max-lifetime.log 2>&1 &
   
-  # Configure CloudWatch Logs if enabled
   if [ "/aws/ec2/github-runners" != "" ]; then
     log "Installing CloudWatch agent"
-    # Use a subshell to prevent CloudWatch failures from stopping the entire script
     (
   
-      # Wait for dpkg lock to be released (up to 2 minutes)
       log "Waiting for dpkg lock to be released..."
       timeout=120
       while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
@@ -1483,12 +1291,10 @@
         timeout=$((timeout - 5))
       done
   
-      # Download and install CloudWatch agent
       wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
       dpkg -i -E ./amazon-cloudwatch-agent.deb
       rm amazon-cloudwatch-agent.deb
   
-      # Configure CloudWatch agent
       cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
   {
     "agent": {
@@ -1511,7 +1317,6 @@
   }
   EOF
   
-      # Start CloudWatch agent
       /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
         -a fetch-config \
         -m ec2 \
@@ -1522,22 +1327,17 @@
     ) || log "WARNING: CloudWatch agent installation failed, continuing without it"
   fi
   
-  # Configure SSH access if public key provided
   if [ -n "" ]; then
     log "Configuring SSH access"
   
-    # Determine the default user based on the home directory owner
     DEFAULT_USER=$(stat -c "%U" "$homedir" 2>/dev/null || echo "root")
   
-    # Create .ssh directory if it doesn't exist
     mkdir -p "/home/ec2-user/.ssh"
     chmod 700 "/home/ec2-user/.ssh"
   
-    # Add the public key to authorized_keys
     echo "" >> "$homedir/.ssh/authorized_keys"
     chmod 600 "$homedir/.ssh/authorized_keys"
   
-    # Set proper ownership
     if [ "$DEFAULT_USER" != "root" ]; then
       chown -R "$DEFAULT_USER:$DEFAULT_USER" "$homedir/.ssh"
     fi
@@ -1552,10 +1352,8 @@
   log "Running pre-runner script"
   source pre-runner-script.sh
   export RUNNER_ALLOW_RUNASROOT=1
-  # Detect architecture and download appropriate runner
   ARCH=$(uname -m)
   if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-    # For ARM, replace x64 with arm64 in the URL
     RUNNER_URL=$(echo "test.tar.gz" | sed 's/x64/arm64/g')
     log "ARM detected, using: $RUNNER_URL"
   else
@@ -1564,9 +1362,7 @@
   fi
   curl -L $RUNNER_URL -o runner.tar.gz
   log "Extracting runner"
-  # `--no-overwrite-dir` is important, otherwise `$homedir` ends up `chown`'d to `1001:docker`, and `sshd` will refuse connection attempts to `$homedir`
   tar --no-overwrite-dir -xzf runner.tar.gz
-  # Create job tracking scripts
   cat > /usr/local/bin/job-started-hook.sh << 'EOFS'
   #!/bin/bash
   exec >> /tmp/job-started-hook.log 2>&1
@@ -1612,7 +1408,6 @@
   
   chmod +x /usr/local/bin/runner-common-functions.sh /usr/local/bin/job-started-hook.sh /usr/local/bin/job-completed-hook.sh /usr/local/bin/check-runner-termination.sh
   
-  # Set up runner hooks
   echo "ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/job-started-hook.sh" > .env
   echo "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/job-completed-hook.sh" >> .env
   echo "RUNNER_HOME=$homedir" >> .env
@@ -1620,13 +1415,10 @@
   echo "RUNNER_INITIAL_GRACE_PERIOD=181" >> .env
   echo "RUNNER_POLL_INTERVAL=11" >> .env
   
-  # Set up job tracking directory
   mkdir -p /var/run/github-runner-jobs
   
-  # Create initial activity timestamp
   touch /var/run/github-runner-last-activity
   
-  # Set up periodic termination check using systemd
   cat > /etc/systemd/system/runner-termination-check.service << 'EOF'
   [Unit]
   Description=Check GitHub runner termination conditions
@@ -1650,27 +1442,20 @@
   WantedBy=timers.target
   EOF
   
-  # Enable and start the timer
   systemctl daemon-reload
   systemctl enable runner-termination-check.timer
   systemctl start runner-termination-check.timer
   
-  # Get instance metadata for descriptive runner name
   INSTANCE_ID=$(get_metadata "instance-id")
   INSTANCE_TYPE=$(get_metadata "instance-type")
   
-  # Create runner name with just the instance ID for uniqueness
   RUNNER_NAME="ec2-${INSTANCE_ID}"
   
-  # Build additional labels with metadata for easier correlation
-  # These will be visible in the GitHub runner management UI
   METADATA_LABELS=""
   METADATA_LABELS="${METADATA_LABELS},instance-id:${INSTANCE_ID}"
   METADATA_LABELS="${METADATA_LABELS},instance-type:${INSTANCE_TYPE}"
   
-  # Add GitHub workflow metadata passed from the action
   if [ -n "CI" ]; then
-    # Replace spaces and special chars in workflow name for label compatibility
     WORKFLOW_LABEL=$(echo "CI" | tr ' /' '-' | tr -cd '[:alnum:]-_')
     METADATA_LABELS="${METADATA_LABELS},workflow:${WORKFLOW_LABEL}"
   fi
@@ -1681,18 +1466,13 @@
     METADATA_LABELS="${METADATA_LABELS},run-number:42"
   fi
   
-  # Combine provided labels (user + runner-xxx) with instance metadata labels
-  # The label variable already contains user labels and the critical runner-xxx label from Python
   ALL_LABELS="label${METADATA_LABELS}"
   
   log "Configuring runner for repo: omsf-eco-infra/awsinfratesting"
   log "Runner name: ${RUNNER_NAME}"
   log "Labels: ${ALL_LABELS}"
-  # Export token for error handler
   export RUNNER_TOKEN="test"
   
-  # Attempt to register. If a runner with the same name exists, config.sh will fail
-  # We use --unattended to prevent interactive prompts
   if ! ./config.sh --url https://github.com/omsf-eco-infra/awsinfratesting --token test --labels "${ALL_LABELS}" --name "${RUNNER_NAME}" --disableupdate --unattended; then
     log_error "Failed to register runner '${RUNNER_NAME}'"
     log_error "This usually means a runner with this name already exists"
@@ -1701,11 +1481,9 @@
   fi
   log "Runner registered successfully"
   
-  # Mark registration as complete and kill the watchdog
   log "Creating registration marker"
   touch /var/run/github-runner-registered
   ls -la /var/run/github-runner-registered
-  # Read watchdog PID from file (survives exec redirect)
   if [ -f /var/run/github-runner-watchdog.pid ]; then
     WATCHDOG_PID=$(cat /var/run/github-runner-watchdog.pid)
     if kill -0 $WATCHDOG_PID 2>/dev/null; then
@@ -1718,16 +1496,10 @@
   fi
   
   log "Starting runner"
-  # Create marker file for cleanup service
   touch /var/run/github-runner-started
-  # Ensure CloudWatch agent can read diagnostic logs
-  # The cwagent user needs to traverse into /home/ec2-user to reach _diag
-  # Make /home/ec2-user world-executable (but not readable) so cwagent can traverse it
   chmod o+x $homedir
   log "Made $homedir traversable for CloudWatch agent"
-  # Create _diag directory if it doesn't exist
   mkdir -p $homedir/_diag
-  # The _diag files are already world-readable by default, just ensure the directory is too
   chmod 755 $homedir/_diag
   ./run.sh
   
