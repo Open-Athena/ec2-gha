@@ -4,6 +4,9 @@
 
 ## Common Development Commands
 
+- Don't explicitly set the `AWS_PROFILE` (e.g. to `oa-ci-dev`) in your commands; assume it's set for you out of band, verify if you need.
+- Instance userdata (rendered form of `src/ec2_gha/templates/user-script.sh.templ`) has to stay under 16KiB.
+
 ### Testing
 ```bash
 # Install test dependencies
@@ -11,6 +14,14 @@ pip install '.[test]'
 
 # Run tests matching a pattern
 cd tests/ && pytest -v -m 'not slow'
+
+# Update `syrupy` "snapshots", run tests to verify they pass with (possibly-updated) snapshot values. Just a wrapper for:
+# ```bash
+# pytest --snapshot-update -m 'not slow'
+# pytest -vvv -m 'not slow' .
+# ```
+# Can be used in conjunction with `git rebase -x`.
+scripts/update-snapshots.sh
 ```
 
 ### Linting

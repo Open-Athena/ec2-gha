@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """GPU benchmark script for testing PyTorch CUDA capabilities.
 
-Used by ``demo-gpu-dbg.yml``.
+Used by ``demo-gpu.yml``.
 """
 
 import sys

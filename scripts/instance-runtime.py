@@ -18,6 +18,20 @@ from datetime import datetime, timezone, timedelta
 from functools import partial
 from typing import Dict, List, Optional
 
+from dateutil import parser as date_parser
+
+from ec2_gha.log_constants import (
+    LOG_STREAM_RUNNER_SETUP,
+    LOG_STREAM_JOB_STARTED,
+    LOG_STREAM_JOB_COMPLETED,
+    LOG_STREAM_TERMINATION,
+    LOG_PREFIX_JOB_STARTED,
+    LOG_PREFIX_JOB_COMPLETED,
+    LOG_MSG_TERMINATION_PROCEEDING,
+    LOG_MSG_RUNNER_REMOVED,
+    DEFAULT_CLOUDWATCH_LOG_GROUP,
+)
+
 err = partial(print, file=sys.stderr)
 
 def run_command(cmd: List[str]) -> Optional[str]:
@@ -35,7 +49,9 @@ def run_command(cmd: List[str]) -> Optional[str]:
 
 
 
-def get_log_streams(instance_id: str, log_group: str = "/aws/ec2/github-runners") -> List[Dict]:
+def get_log_streams(instance_id: str, log_group: str = None) -> List[Dict]:
+    if log_group is None:
+        log_group = DEFAULT_CLOUDWATCH_LOG_GROUP
     """Get CloudWatch log streams for an instance."""
     cmd = [
         "aws", "logs", "describe-log-streams",
@@ -76,32 +92,35 @@ def get_log_events(log_group: str, log_stream: str, limit: int = 100, start_from
 
 
 def parse_timestamp(ts_str: str) -> Optional[datetime]:
-    """Parse various timestamp formats."""
-    # Try ISO format first
+    """Parse various timestamp formats and ensure timezone is set."""
     try:
-        return datetime.fromisoformat(ts_str.replace("+00:00", "+00:00"))
+        dt = date_parser.parse(ts_str)
+        # If no timezone info, assume UTC
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
     except:
-        pass
-
-    # Try log format: "Thu Aug 14 00:29:25 UTC 2025"
-    try:
-        return datetime.strptime(ts_str, "%a %b %d %H:%M:%S %Z %Y").replace(tzinfo=timezone.utc)
-    except:
-        pass
-
-    return None
+        return None
 
 
 def extract_timestamp_from_log(message: str) -> Optional[datetime]:
     """Extract timestamp from log message."""
     # Pattern: [Thu Aug 14 00:29:25 UTC 2025]
-    match = re.search(r'\[([^]]+UTC \d{4})]', message)
+    match = re.search(r'\[([^]]+UTC \d{4})\]', message)
     if match:
         return parse_timestamp(match.group(1))
+
+    # Pattern: [2025-08-14 17:37:20]
+    match = re.search(r'\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]', message)
+    if match:
+        return parse_timestamp(match.group(1))
+
     return None
 
 
-def analyze_instance(instance_id: str, log_group: str = "/aws/ec2/github-runners") -> Dict:
+def analyze_instance(instance_id: str, log_group: str = None) -> Dict:
+    if log_group is None:
+        log_group = DEFAULT_CLOUDWATCH_LOG_GROUP
     """Analyze runtime and job execution for an instance."""
     result = {
         "instance_id": instance_id,
@@ -119,14 +138,18 @@ def analyze_instance(instance_id: str, log_group: str = "/aws/ec2/github-runners
     # Get CloudWatch logs
     log_streams = get_log_streams(instance_id, log_group)
 
-    # Check if logs are empty (all streams have 0 bytes)
-    logs_empty = all(stream.get("storedBytes", 0) == 0 for stream in log_streams) if log_streams else True
+    # Check if logs are empty (all streams have no events)
+    # Note: storedBytes is often 0 even when there's data, so check for event timestamps instead
+    logs_empty = all(
+        stream.get("firstEventTimestamp") is None and stream.get("lastEventTimestamp") is None
+        for stream in log_streams
+    ) if log_streams else True
 
     # Extract instance info from logs
     if log_streams and not logs_empty:
         # Try to get launch time and instance type from runner-setup log
         for stream in log_streams:
-            if "/runner-setup" in stream["logStreamName"]:
+            if f"/{LOG_STREAM_RUNNER_SETUP}" in stream["logStreamName"]:
                 # Get first events for launch time
                 events = get_log_events(log_group, stream["logStreamName"], limit=50, start_from_head=True)
 
@@ -159,6 +182,12 @@ def analyze_instance(instance_id: str, log_group: str = "/aws/ec2/github-runners
                                 result["instance_type"] = match.group(1).lower()
                                 break
 
+                    # Look for region in metadata
+                    if "Region:" in msg:
+                        match = re.search(r'Region:\s+(\S+)', msg)
+                        if match:
+                            result["tags"]["Region"] = match.group(1)
+
                     # Look for repository name
                     if "Repository:" in msg or "GITHUB_REPOSITORY" in msg:
                         match = re.search(r'Repository:\s+(\S+)|GITHUB_REPOSITORY=(\S+)', msg)
@@ -173,14 +202,14 @@ def analyze_instance(instance_id: str, log_group: str = "/aws/ec2/github-runners
 
     # Find termination time
     for stream in log_streams:
-        if "/termination" in stream["logStreamName"]:
+        if f"/{LOG_STREAM_TERMINATION}" in stream["logStreamName"]:
             events = get_log_events(log_group, stream["logStreamName"])
             for event in events:
-                if "proceeding with termination" in event["message"]:
+                if LOG_MSG_TERMINATION_PROCEEDING in event["message"]:
                     ts = extract_timestamp_from_log(event["message"])
                     if ts:
                         result["termination_time"] = ts
-                elif "Runner removed from GitHub successfully" in event["message"]:
+                elif LOG_MSG_RUNNER_REMOVED in event["message"]:
                     ts = extract_timestamp_from_log(event["message"])
                     if ts and not result["termination_time"]:
                         result["termination_time"] = ts
@@ -204,42 +233,58 @@ def analyze_instance(instance_id: str, log_group: str = "/aws/ec2/github-runners
     job_ends = {}
 
     for stream in log_streams:
-        if "/job-started" in stream["logStreamName"]:
+        if f"/{LOG_STREAM_JOB_STARTED}" in stream["logStreamName"]:
             events = get_log_events(log_group, stream["logStreamName"])
             for event in events:
                 msg = event.get("message", "")
-                # Parse job start events - look for "Job STARTED" pattern
-                if "Job STARTED" in msg:
+                # Parse job start events - look for the job started prefix
+                if LOG_PREFIX_JOB_STARTED in msg or "Job STARTED" in msg:
                     # Extract timestamp
                     ts = extract_timestamp_from_log(msg)
                     if ts:
-                        # Extract job name and run info
-                        # Pattern: "Job STARTED  : Test pip install - multiple versions/install (Run: 16952719799/11, Attempt: 1)"
-                        match = re.search(r'Job STARTED\s*:\s*([^(]+)\s*\(Run:\s*(\d+)/(\d+)', msg)
+                        # Extract job name - try both patterns
+                        # Pattern 1: "Job started: job-name" (using LOG_PREFIX_JOB_STARTED)
+                        # Pattern 2: "Job STARTED  : Test pip install - multiple versions/install (Run: 16952719799/11, Attempt: 1)"
+                        # Create pattern that handles both cases
+                        prefix_pattern = re.escape(LOG_PREFIX_JOB_STARTED.rstrip(':'))
+                        match = re.search(rf'(?:{prefix_pattern}|Job STARTED)\s*:\s*([^(\n]+?)(?:\s*\(Run:\s*(\d+)/(\d+))?$', msg, re.IGNORECASE)
                         if match:
                             job_name = match.group(1).strip()
-                            run_id = match.group(2)
-                            job_num = match.group(3)
-                            job_key = f"{run_id}/{job_num}"
+                            run_id = match.group(2) if match.group(2) else None
+                            job_num = match.group(3) if match.group(3) else None
+
+                            if run_id and job_num:
+                                job_key = f"{run_id}/{job_num}"
+                            else:
+                                # Use job name as key if no run info
+                                job_key = job_name
                             job_starts[job_key] = (ts, job_name)
 
-        elif "/job-completed" in stream["logStreamName"]:
+        elif f"/{LOG_STREAM_JOB_COMPLETED}" in stream["logStreamName"]:
             events = get_log_events(log_group, stream["logStreamName"])
             for event in events:
                 msg = event.get("message", "")
-                # Parse job completion events - look for "Job COMPLETED" pattern
-                if "Job COMPLETED" in msg:
+                # Parse job completion events - look for the job completed prefix
+                if LOG_PREFIX_JOB_COMPLETED in msg or "Job COMPLETED" in msg:
                     # Extract timestamp
                     ts = extract_timestamp_from_log(msg)
                     if ts:
-                        # Extract job name and run info
-                        # Pattern: "Job COMPLETED: Test pip install - multiple versions/install (Run: 16952719799/11, Attempt: 1)"
-                        match = re.search(r'Job COMPLETED\s*:\s*([^(]+)\s*\(Run:\s*(\d+)/(\d+)', msg)
+                        # Extract job name - try both patterns
+                        # Pattern 1: "Job completed: job-name" (using LOG_PREFIX_JOB_COMPLETED)
+                        # Pattern 2: "Job COMPLETED: Test pip install - multiple versions/install (Run: 16952719799/11, Attempt: 1)"
+                        # Create pattern that handles both cases
+                        prefix_pattern = re.escape(LOG_PREFIX_JOB_COMPLETED.rstrip(':'))
+                        match = re.search(rf'(?:{prefix_pattern}|Job COMPLETED)\s*:\s*([^(\n]+?)(?:\s*\(Run:\s*(\d+)/(\d+))?$', msg, re.IGNORECASE)
                         if match:
                             job_name = match.group(1).strip()
-                            run_id = match.group(2)
-                            job_num = match.group(3)
-                            job_key = f"{run_id}/{job_num}"
+                            run_id = match.group(2) if match.group(2) else None
+                            job_num = match.group(3) if match.group(3) else None
+
+                            if run_id and job_num:
+                                job_key = f"{run_id}/{job_num}"
+                            else:
+                                # Use job name as key if no run info
+                                job_key = job_name
                             job_ends[job_key] = (ts, job_name)
 
     # Match starts and ends
@@ -419,7 +464,11 @@ def get_region_name(region_code: str) -> str:
     return region_code
 
 
-def calculate_cost(instance_type: str, runtime_seconds: int, region: str = "us-east-1") -> float:
+def calculate_cost(
+    instance_type: str,
+    runtime_seconds: int,
+    region: str = "us-east-1",
+) -> float:
     """Calculate cost based on instance type and runtime."""
     hourly_cost = get_instance_price(instance_type, region)
     if hourly_cost == 0:
@@ -533,13 +582,19 @@ Examples:
 
             except Exception as e:
                 err(f"Error analyzing {instance_id}: {e}")
-                # Add failed result
+                # Add failed result with all required fields
                 results.append({
                     "instance_id": instance_id,
                     "error": str(e),
                     "total_runtime_seconds": 0,
                     "job_runtime_seconds": 0,
-                    "estimated_cost": 0
+                    "estimated_cost": 0,
+                    "instance_type": "unknown",
+                    "state": "error",
+                    "launch_time": None,
+                    "termination_time": None,
+                    "jobs": [],
+                    "tags": {}
                 })
 
     # Sort results by instance ID for consistent output
