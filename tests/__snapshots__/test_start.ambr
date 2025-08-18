@@ -209,7 +209,7 @@
           rm amazon-cloudwatch-agent.deb
       
           # Configure CloudWatch agent
-          cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'EOF'
+          cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
       {
         "agent": {
           "run_as_user": "cwagent"
@@ -222,8 +222,8 @@
                 { "file_path": "/tmp/job-started-hook.log", "log_group_name": "", "log_stream_name": "{instance_id}/job-started", "timezone": "UTC" },
                 { "file_path": "/tmp/job-completed-hook.log", "log_group_name": "", "log_stream_name": "{instance_id}/job-completed", "timezone": "UTC" },
                 { "file_path": "/tmp/termination-check.log", "log_group_name": "", "log_stream_name": "{instance_id}/termination", "timezone": "UTC" },
-                { "file_path": "$homedir/_diag/Runner_**.log", "log_group_name": "", "log_stream_name": "{instance_id}/runner-diag", "timezone": "UTC" },
-                { "file_path": "$homedir/_diag/Worker_**.log", "log_group_name": "", "log_stream_name": "{instance_id}/worker-diag", "timezone": "UTC" }
+                { "file_path": "/home/ec2-user/_diag/Runner_**.log", "log_group_name": "", "log_stream_name": "{instance_id}/runner-diag", "timezone": "UTC" },
+                { "file_path": "/home/ec2-user/_diag/Worker_**.log", "log_group_name": "", "log_stream_name": "{instance_id}/worker-diag", "timezone": "UTC" }
               ]
             }
           }
@@ -311,6 +311,8 @@
       A="/var/run/github-runner-last-activity"
       J="/var/run/github-runner-jobs"
       H="/var/run/github-runner-has-run-job"
+      HOMEDIR="/home/ec2-user"
+      TOKEN="test"
       [ ! -f "$A" ] && touch "$A"
       L=$(stat -c %Y "$A" 2>/dev/null || echo 0)
       I=$(($(date +%s)-L))
@@ -318,9 +320,9 @@
       R=$(grep -l '"status":"running"' $J/*.job 2>/dev/null | wc -l || echo 0)
       if [ $R -eq 0 ] && [ $I -gt $G ]; then
         echo "[$(date)] Terminating: idle $I > grace $G"
-        [ -f "$homedir/config.sh" ] && cd "$homedir" && pkill -INT -f "Runner.Listener" 2>/dev/null || true
+        [ -f "$HOMEDIR/config.sh" ] && cd "$HOMEDIR" && pkill -INT -f "Runner.Listener" 2>/dev/null || true
         sleep 2
-        [ -f "$homedir/config.sh" ] && RUNNER_ALLOW_RUNASROOT=1 ./config.sh remove --token test
+        [ -f "$HOMEDIR/config.sh" ] && RUNNER_ALLOW_RUNASROOT=1 ./config.sh remove --token $TOKEN
         flush_cloudwatch_logs
         sudo shutdown -h now
       else
@@ -658,7 +660,7 @@
           rm amazon-cloudwatch-agent.deb
       
           # Configure CloudWatch agent
-          cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'EOF'
+          cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
       {
         "agent": {
           "run_as_user": "cwagent"
@@ -671,8 +673,8 @@
                 { "file_path": "/tmp/job-started-hook.log", "log_group_name": "", "log_stream_name": "{instance_id}/job-started", "timezone": "UTC" },
                 { "file_path": "/tmp/job-completed-hook.log", "log_group_name": "", "log_stream_name": "{instance_id}/job-completed", "timezone": "UTC" },
                 { "file_path": "/tmp/termination-check.log", "log_group_name": "", "log_stream_name": "{instance_id}/termination", "timezone": "UTC" },
-                { "file_path": "$homedir/_diag/Runner_**.log", "log_group_name": "", "log_stream_name": "{instance_id}/runner-diag", "timezone": "UTC" },
-                { "file_path": "$homedir/_diag/Worker_**.log", "log_group_name": "", "log_stream_name": "{instance_id}/worker-diag", "timezone": "UTC" }
+                { "file_path": "/home/ec2-user/_diag/Runner_**.log", "log_group_name": "", "log_stream_name": "{instance_id}/runner-diag", "timezone": "UTC" },
+                { "file_path": "/home/ec2-user/_diag/Worker_**.log", "log_group_name": "", "log_stream_name": "{instance_id}/worker-diag", "timezone": "UTC" }
               ]
             }
           }
@@ -760,6 +762,8 @@
       A="/var/run/github-runner-last-activity"
       J="/var/run/github-runner-jobs"
       H="/var/run/github-runner-has-run-job"
+      HOMEDIR="/home/ec2-user"
+      TOKEN="test"
       [ ! -f "$A" ] && touch "$A"
       L=$(stat -c %Y "$A" 2>/dev/null || echo 0)
       I=$(($(date +%s)-L))
@@ -767,9 +771,9 @@
       R=$(grep -l '"status":"running"' $J/*.job 2>/dev/null | wc -l || echo 0)
       if [ $R -eq 0 ] && [ $I -gt $G ]; then
         echo "[$(date)] Terminating: idle $I > grace $G"
-        [ -f "$homedir/config.sh" ] && cd "$homedir" && pkill -INT -f "Runner.Listener" 2>/dev/null || true
+        [ -f "$HOMEDIR/config.sh" ] && cd "$HOMEDIR" && pkill -INT -f "Runner.Listener" 2>/dev/null || true
         sleep 2
-        [ -f "$homedir/config.sh" ] && RUNNER_ALLOW_RUNASROOT=1 ./config.sh remove --token test
+        [ -f "$HOMEDIR/config.sh" ] && RUNNER_ALLOW_RUNASROOT=1 ./config.sh remove --token $TOKEN
         flush_cloudwatch_logs
         sudo shutdown -h now
       else
@@ -1071,7 +1075,7 @@
       rm amazon-cloudwatch-agent.deb
   
       # Configure CloudWatch agent
-      cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'EOF'
+      cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
   {
     "agent": {
       "run_as_user": "cwagent"
@@ -1084,8 +1088,8 @@
             { "file_path": "/tmp/job-started-hook.log", "log_group_name": "", "log_stream_name": "{instance_id}/job-started", "timezone": "UTC" },
             { "file_path": "/tmp/job-completed-hook.log", "log_group_name": "", "log_stream_name": "{instance_id}/job-completed", "timezone": "UTC" },
             { "file_path": "/tmp/termination-check.log", "log_group_name": "", "log_stream_name": "{instance_id}/termination", "timezone": "UTC" },
-            { "file_path": "$homedir/_diag/Runner_**.log", "log_group_name": "", "log_stream_name": "{instance_id}/runner-diag", "timezone": "UTC" },
-            { "file_path": "$homedir/_diag/Worker_**.log", "log_group_name": "", "log_stream_name": "{instance_id}/worker-diag", "timezone": "UTC" }
+            { "file_path": "/home/ec2-user/_diag/Runner_**.log", "log_group_name": "", "log_stream_name": "{instance_id}/runner-diag", "timezone": "UTC" },
+            { "file_path": "/home/ec2-user/_diag/Worker_**.log", "log_group_name": "", "log_stream_name": "{instance_id}/worker-diag", "timezone": "UTC" }
           ]
         }
       }
@@ -1173,6 +1177,8 @@
   A="/var/run/github-runner-last-activity"
   J="/var/run/github-runner-jobs"
   H="/var/run/github-runner-has-run-job"
+  HOMEDIR="/home/ec2-user"
+  TOKEN="test"
   [ ! -f "$A" ] && touch "$A"
   L=$(stat -c %Y "$A" 2>/dev/null || echo 0)
   I=$(($(date +%s)-L))
@@ -1180,9 +1186,9 @@
   R=$(grep -l '"status":"running"' $J/*.job 2>/dev/null | wc -l || echo 0)
   if [ $R -eq 0 ] && [ $I -gt $G ]; then
     echo "[$(date)] Terminating: idle $I > grace $G"
-    [ -f "$homedir/config.sh" ] && cd "$homedir" && pkill -INT -f "Runner.Listener" 2>/dev/null || true
+    [ -f "$HOMEDIR/config.sh" ] && cd "$HOMEDIR" && pkill -INT -f "Runner.Listener" 2>/dev/null || true
     sleep 2
-    [ -f "$homedir/config.sh" ] && RUNNER_ALLOW_RUNASROOT=1 ./config.sh remove --token test
+    [ -f "$HOMEDIR/config.sh" ] && RUNNER_ALLOW_RUNASROOT=1 ./config.sh remove --token $TOKEN
     flush_cloudwatch_logs
     sudo shutdown -h now
   else
@@ -1483,7 +1489,7 @@
       rm amazon-cloudwatch-agent.deb
   
       # Configure CloudWatch agent
-      cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'EOF'
+      cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
   {
     "agent": {
       "run_as_user": "cwagent"
@@ -1496,8 +1502,8 @@
             { "file_path": "/tmp/job-started-hook.log", "log_group_name": "/aws/ec2/github-runners", "log_stream_name": "{instance_id}/job-started", "timezone": "UTC" },
             { "file_path": "/tmp/job-completed-hook.log", "log_group_name": "/aws/ec2/github-runners", "log_stream_name": "{instance_id}/job-completed", "timezone": "UTC" },
             { "file_path": "/tmp/termination-check.log", "log_group_name": "/aws/ec2/github-runners", "log_stream_name": "{instance_id}/termination", "timezone": "UTC" },
-            { "file_path": "$homedir/_diag/Runner_**.log", "log_group_name": "/aws/ec2/github-runners", "log_stream_name": "{instance_id}/runner-diag", "timezone": "UTC" },
-            { "file_path": "$homedir/_diag/Worker_**.log", "log_group_name": "/aws/ec2/github-runners", "log_stream_name": "{instance_id}/worker-diag", "timezone": "UTC" }
+            { "file_path": "/home/ec2-user/_diag/Runner_**.log", "log_group_name": "/aws/ec2/github-runners", "log_stream_name": "{instance_id}/runner-diag", "timezone": "UTC" },
+            { "file_path": "/home/ec2-user/_diag/Worker_**.log", "log_group_name": "/aws/ec2/github-runners", "log_stream_name": "{instance_id}/worker-diag", "timezone": "UTC" }
           ]
         }
       }
@@ -1585,6 +1591,8 @@
   A="/var/run/github-runner-last-activity"
   J="/var/run/github-runner-jobs"
   H="/var/run/github-runner-has-run-job"
+  HOMEDIR="/home/ec2-user"
+  TOKEN="test"
   [ ! -f "$A" ] && touch "$A"
   L=$(stat -c %Y "$A" 2>/dev/null || echo 0)
   I=$(($(date +%s)-L))
@@ -1592,9 +1600,9 @@
   R=$(grep -l '"status":"running"' $J/*.job 2>/dev/null | wc -l || echo 0)
   if [ $R -eq 0 ] && [ $I -gt $G ]; then
     echo "[$(date)] Terminating: idle $I > grace $G"
-    [ -f "$homedir/config.sh" ] && cd "$homedir" && pkill -INT -f "Runner.Listener" 2>/dev/null || true
+    [ -f "$HOMEDIR/config.sh" ] && cd "$HOMEDIR" && pkill -INT -f "Runner.Listener" 2>/dev/null || true
     sleep 2
-    [ -f "$homedir/config.sh" ] && RUNNER_ALLOW_RUNASROOT=1 ./config.sh remove --token test
+    [ -f "$HOMEDIR/config.sh" ] && RUNNER_ALLOW_RUNASROOT=1 ./config.sh remove --token $TOKEN
     flush_cloudwatch_logs
     sudo shutdown -h now
   else
