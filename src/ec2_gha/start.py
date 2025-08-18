@@ -11,6 +11,8 @@ from gha_runner.clouddeployment import CreateCloudInstance
 from gha_runner.helper.workflow_cmds import output
 from copy import deepcopy
 
+from ec2_gha.defaults import AUTO, RUNNER_REGISTRATION_TIMEOUT
+
 
 @dataclass
 class StartAWS(CreateCloudInstance):
@@ -18,8 +20,6 @@ class StartAWS(CreateCloudInstance):
 
     Parameters
     ----------
-    home_dir : str
-        The home directory of the user.
     image_id : str
         The ID of the AMI to use.
     instance_type : str
@@ -32,6 +32,8 @@ class StartAWS(CreateCloudInstance):
         CloudWatch Logs group name for streaming runner logs. Defaults to an empty string.
     gh_runner_tokens : list[str]
         A list of GitHub runner tokens. Defaults to an empty list.
+    home_dir : str
+        The home directory of the user. If not provided, will be inferred from the AMI.
     iam_instance_profile : str
         The name of the IAM role to use. Defaults to an empty string.
     key_name : str
@@ -63,13 +65,13 @@ class StartAWS(CreateCloudInstance):
 
     """
 
-    home_dir: str
     image_id: str
     instance_type: str
     region_name: str
     repo: str
     cloudwatch_logs_group: str = ""
     gh_runner_tokens: list[str] = field(default_factory=list)
+    home_dir: str = ""
     iam_instance_profile: str = ""
     instance_name: str = ""
     key_name: str = ""
@@ -87,7 +89,7 @@ class StartAWS(CreateCloudInstance):
     tags: list[dict[str, str]] = field(default_factory=list)
     userdata: str = ""
 
-    def _build_aws_params(self, user_data_params: dict) -> dict:
+    def _build_aws_params(self, user_data_params: dict, idx: int = None) -> dict:
         """Build the parameters for the AWS API call.
 
         Parameters
@@ -163,6 +165,10 @@ class StartAWS(CreateCloudInstance):
             # Get run number
             template_vars["run_number"] = os.environ.get("GITHUB_RUN_NUMBER", "unknown")
 
+            # Add instance index if provided (for multi-instance launches)
+            if idx is not None:
+                template_vars["idx"] = str(idx)
+
             # Apply the instance name template
             from string import Template
             name_template = Template(self.instance_name)
@@ -206,6 +212,16 @@ class StartAWS(CreateCloudInstance):
             The user data script as a string.
 
         """
+        # Import log constants to inject into template
+        from ec2_gha.log_constants import (
+            LOG_PREFIX_JOB_STARTED,
+            LOG_PREFIX_JOB_COMPLETED,
+        )
+
+        # Add log constants to the kwargs
+        kwargs['log_prefix_job_started'] = LOG_PREFIX_JOB_STARTED
+        kwargs['log_prefix_job_completed'] = LOG_PREFIX_JOB_COMPLETED
+
         template = importlib.resources.files("ec2_gha").joinpath("templates/user-script.sh.templ")
         with template.open() as f:
             template_content = f.read()
@@ -269,8 +285,6 @@ class StartAWS(CreateCloudInstance):
             raise ValueError("No GitHub runner tokens provided, cannot create instances.")
         if not self.runner_release:
             raise ValueError("No runner release provided, cannot create instances.")
-        if not self.home_dir:
-            raise ValueError("No home directory provided, cannot create instances.")
         if not self.image_id:
             raise ValueError("No image ID provided, cannot create instances.")
         if not self.instance_type:
@@ -278,8 +292,12 @@ class StartAWS(CreateCloudInstance):
         if not self.region_name:
             raise ValueError("No region name provided, cannot create instances.")
         ec2 = boto3.client("ec2", region_name=self.region_name)
+
+        # Use AUTO to let the instance detect its own home directory
+        if not self.home_dir:
+            self.home_dir = AUTO
         id_dict = {}
-        for token in self.gh_runner_tokens:
+        for idx, token in enumerate(self.gh_runner_tokens):
             label = gh.GitHubInstance.generate_random_label()
             # Combine user labels with the generated runner label
             labels = f"{self.labels},{label}" if self.labels else label
@@ -296,13 +314,14 @@ class StartAWS(CreateCloudInstance):
                 "runner_grace_period": self.runner_grace_period,
                 "runner_initial_grace_period": self.runner_initial_grace_period,
                 "runner_poll_interval": self.runner_poll_interval,
+                "runner_registration_timeout": environ.get("INPUT_RUNNER_REGISTRATION_TIMEOUT", "").strip() or RUNNER_REGISTRATION_TIMEOUT,
                 "runner_release": self.runner_release,
                 "script": self.script,
                 "ssh_pubkey": self.ssh_pubkey,
                 "token": token,
                 "userdata": self.userdata,
             }
-            params = self._build_aws_params(user_data_params)
+            params = self._build_aws_params(user_data_params, idx=idx)
             if self.root_device_size > 0:
                 params = self._modify_root_disk_size(ec2, params)
             result = ec2.run_instances(**params)

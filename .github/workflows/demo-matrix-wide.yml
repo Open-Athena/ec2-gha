@@ -9,6 +9,8 @@ jobs:
   ec2:
     uses: ./.github/workflows/runner.yml
     secrets: inherit
+    with:
+      ec2_image_id: ami-0e86e20dae9224db8  # Ubuntu 24.04 LTS x86_64 (us-east-1)
   test-matrix:
     needs: ec2
     runs-on: ${{ needs.ec2.outputs.id }}

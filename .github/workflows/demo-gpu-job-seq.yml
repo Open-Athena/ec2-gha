@@ -1,0 +1,137 @@
+name: Demo – comprehensive GPU workload with sequential jobs
+on:
+  workflow_dispatch:
+    inputs:
+      sleep:
+        description: "Sleep for this many seconds at the end of each job (optional, for SSH debugging)"
+        required: false
+        type: number
+        default: 0
+      ssh_pubkey:
+        description: "Add this SSH public key to instance's `~/.ssh/authorized_keys` (optional, for debugging)"
+        required: false
+        type: string
+  workflow_call:   # Tested by `demos.yml`
+    inputs:
+      sleep:
+        required: false
+        type: number
+        default: 0
+      ssh_pubkey:
+        required: false
+        type: string
+
+permissions:
+  id-token: write  # Required for AWS OIDC authentication
+  contents: read   # Required for actions/checkout
+
+jobs:
+  ec2:
+    uses: ./.github/workflows/runner.yml
+    secrets: inherit
+    with:
+      ec2_instance_type: g4dn.xlarge
+      ec2_image_id: ami-00096836009b16a22  # Deep Learning OSS Nvidia Driver AMI GPU PyTorch
+      ssh_pubkey: ${{ inputs.ssh_pubkey }}
+
+  # Job 1: Prepare environment and verify GPU
+  prepare:
+    needs: ec2
+    runs-on: ${{ needs.ec2.outputs.id }}
+    outputs:
+      gpu-uuid: ${{ steps.gpu-info.outputs.uuid }}
+      gpu-name: ${{ steps.gpu-info.outputs.name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get GPU info
+        id: gpu-info
+        run: |
+          echo "=== Preparing GPU environment ==="
+          nvidia-smi
+          uuid=$(nvidia-smi --query-gpu=gpu_uuid --format=csv,noheader)
+          name=$(nvidia-smi --query-gpu=name --format=csv,noheader)
+          echo "uuid=$uuid" >> $GITHUB_OUTPUT
+          echo "name=$name" >> $GITHUB_OUTPUT
+          echo "GPU UUID: $uuid"
+          echo "GPU Name: $name"
+
+      - name: Setup PyTorch environment
+        run: |
+          echo "=== Setting up PyTorch environment ==="
+          # The DLAMI already has PyTorch installed in a conda environment
+          # Set up environment for GitHub Actions to use the conda env
+          echo "/opt/conda/envs/pytorch/bin" >> $GITHUB_PATH
+          echo "CONDA_DEFAULT_ENV=pytorch" >> $GITHUB_ENV
+
+          # Verify PyTorch is available
+          /opt/conda/envs/pytorch/bin/python -c "import torch; print(f'PyTorch {torch.__version__} with CUDA {torch.version.cuda}')"
+          echo "PyTorch environment ready"
+
+      - name: Sleep (${{ inputs.sleep }}s)
+        if: ${{ inputs.sleep > 0 }}
+        run: |
+          echo "Sleeping for ${{ inputs.sleep }} seconds..."
+          echo "Instance IP available in GitHub Actions log for SSH"
+          sleep ${{ inputs.sleep }}
+
+  # Job 2: Training simulation
+  train:
+    needs: [ec2, prepare]
+    runs-on: ${{ needs.ec2.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify same GPU
+        run: |
+          echo "=== Training on GPU ==="
+          current_uuid=$(nvidia-smi --query-gpu=gpu_uuid --format=csv,noheader)
+          if [[ "$current_uuid" == "${{ needs.prepare.outputs.gpu-uuid }}" ]]; then
+            echo "✅ Confirmed: Using same GPU as preparation job"
+            echo "GPU: ${{ needs.prepare.outputs.gpu-name }}"
+          else
+            echo "❌ ERROR: Different GPU!"
+            exit 1
+          fi
+
+      - name: Run training benchmark
+        run: |
+          echo "=== Running GPU Training Benchmark ==="
+          # Use the conda environment's Python which has PyTorch pre-installed
+          /opt/conda/envs/pytorch/bin/python .github/test-scripts/gpu-benchmark.py
+
+      - name: Sleep (${{ inputs.sleep }}s)
+        if: ${{ inputs.sleep > 0 }}
+        run: sleep ${{ inputs.sleep }}
+
+  # Job 3: Evaluation/testing
+  evaluate:
+    needs: [ec2, train]
+    runs-on: ${{ needs.ec2.outputs.id }}
+    steps:
+      - name: System diagnostics
+        run: |
+          echo "=== Final Evaluation ==="
+          echo "System Info:"
+          uname -a
+          lscpu | grep "Model name" || true
+          free -h
+
+          echo -e "\nGPU Status:"
+          nvidia-smi --query-gpu=name,memory.total,driver_version,utilization.gpu,temperature.gpu --format=csv
+
+          echo -e "\nDisk Usage:"
+          df -h /
+
+          echo -e "\nInstance Metadata:"
+          curl -s -H "X-aws-ec2-metadata-token: $(curl -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 300' http://169.254.169.254/latest/api/token 2>/dev/null)" http://169.254.169.254/latest/meta-data/instance-type || echo "Metadata unavailable"
+
+      - name: Verify multi-job reuse
+        run: |
+          echo "=== Verifying EC2 Instance Reuse ==="
+          echo "This job successfully ran on the same EC2 instance as the previous jobs"
+          echo "The instance will terminate automatically after idle timeout"
+
+      - name: Sleep (${{ inputs.sleep }}s)
+        if: ${{ inputs.sleep > 0 }}
+        run: sleep ${{ inputs.sleep }}

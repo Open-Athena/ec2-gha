@@ -1,8 +1,61 @@
 name: Demo – multiple instances for parallel jobs
 on:
   workflow_dispatch:
+    inputs:
+      instance_count:
+        description: "Number of EC2 instances to create"
+        required: false
+        type: string
+        default: "3"
+  workflow_call:   # Tested by `demos.yml`
+    inputs:
+      instance_count:
+        required: false
+        type: string
+        default: "3"
+
+permissions:
+  id-token: write  # Required for AWS OIDC authentication
+  contents: read   # Required for actions/checkout
+
 jobs:
-  placeholder:
-    runs-on: ubuntu-latest
+  ec2:
+    name: Launch ${{ inputs.instance_count }} EC2 instances
+    uses: ./.github/workflows/runner.yml
+    secrets: inherit
+    with:
+      instance_name: "$repo/$name-$idx (#$run_number)"
+      instance_count: ${{ inputs.instance_count }}
+      ec2_image_id: ami-0e86e20dae9224db8  # Ubuntu 24.04 LTS x86_64 (us-east-1)
+
+  parallel-jobs:
+    needs: ec2
+    strategy:
+      matrix:
+        # Parse the JSON array of runner labels and use them in the matrix
+        runner: ${{ fromJson(needs.ec2.outputs.instances) }}
+    runs-on: ${{ matrix.runner }}
+    name: Job on ${{ matrix.runner }}
     steps:
-      - run: echo "Placeholder workflow – being developed in #2 / rw/hooks branch"
+      - uses: actions/checkout@v4
+
+      - name: Instance info
+        run: |
+          echo "Running on instance with label: ${{ matrix.runner }}"
+          echo "Hostname: $(hostname)"
+          echo "Instance ID: $(curl -s http://169.254.169.254/latest/meta-data/instance-id)"
+          echo "Instance type: $(curl -s http://169.254.169.254/latest/meta-data/instance-type)"
+          echo "Region: $(curl -s http://169.254.169.254/latest/meta-data/placement/region)"
+
+      - name: Simulate workload
+        run: |
+          # Each instance runs independently
+          DURATION=$((RANDOM % 10 + 5))
+          echo "Simulating workload for ${DURATION} seconds..."
+          sleep $DURATION
+          echo "Workload complete!"
+
+      - name: Verify parallelism
+        run: |
+          echo "Completed at: $(date '+%Y-%m-%d %H:%M:%S')"
+          echo "This job ran in parallel with other matrix jobs"

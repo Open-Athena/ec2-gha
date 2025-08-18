@@ -1,4 +1,4 @@
-name: Demo – 2 GPU instances with different architectures
+name: Demo – x86 and ARM instances
 on:
   workflow_dispatch:
   workflow_call:   # Tested by `demos.yml`
@@ -6,65 +6,73 @@ permissions:
   id-token: write  # Required for AWS OIDC authentication
   contents: read   # Required for actions/checkout
 jobs:
-  # Launch EC2 runners for each instance type
-  g4dn:
-    name: Launch g4dn
+  # Launch EC2 runners for each architecture
+  x86:
+    name: Launch x86
     uses: ./.github/workflows/runner.yml
     with:
-      ec2_instance_type: g4dn.xlarge
+      ec2_instance_type: t3.medium
+      ec2_image_id: ami-0e86e20dae9224db8  # Ubuntu 24.04 LTS x86_64 (us-east-1)
     secrets: inherit
-  g4ad:
-    name: Launch g4ad
+  arm:
+    name: Launch ARM
     uses: ./.github/workflows/runner.yml
     with:
-      ec2_instance_type: g4ad.xlarge
+      ec2_instance_type: t4g.medium
+      ec2_image_id: ami-0aa307ed50ca3e58f  # Ubuntu 24.04 LTS arm64 (us-east-1)
     secrets: inherit
 
   # Run jobs directly on launched instances
-  test-g4dn:
-    needs: g4dn
-    if: needs.g4dn.outputs.id != ''
-    name: Test g4dn
-    runs-on: ${{ needs.g4dn.outputs.id }}
+  test-x86:
+    needs: x86
+    if: needs.x86.outputs.id != ''
+    name: Test x86
+    runs-on: ${{ needs.x86.outputs.id }}
     steps:
-    - name: GPU test on g4dn.xlarge
-      run: nvidia-smi  # Verify GPU is available
-  test-g4ad:
-    needs: g4ad
-    if: needs.g4ad.outputs.id != ''
-    name: Test g4ad
-    runs-on: ${{ needs.g4ad.outputs.id }}
-    steps:
-    - name: GPU test on g4ad.xlarge
+    - name: Architecture test on t3.medium
       run: |
-        lspci | grep -i "vga\|display\|3d\|amd"
+        echo "Architecture: $(uname -m)"
+        echo "Processor: $(lscpu | grep 'Architecture:' | awk '{print $2}')"
+        echo "Instance type: $(curl -s http://169.254.169.254/latest/meta-data/instance-type)"
+  test-arm:
+    needs: arm
+    if: needs.arm.outputs.id != ''
+    name: Test ARM
+    runs-on: ${{ needs.arm.outputs.id }}
+    steps:
+    - name: Architecture test on t4g.medium
+      run: |
+        echo "Architecture: $(uname -m)"
+        echo "Processor: $(lscpu | grep 'Architecture:' | awk '{print $2}')"
+        echo "Instance type: $(curl -s http://169.254.169.254/latest/meta-data/instance-type)"
 
   # Use a `matrix` to run jobs on multiple instances
   test-matrix:
-    needs: [g4dn, g4ad]
-    if: always() && (needs.g4dn.outputs.id != '' || needs.g4ad.outputs.id != '')
-    name: Test ${{ matrix.instance }} (matrix)
+    needs: [x86, arm]
+    if: always() && (needs.x86.outputs.id != '' || needs.arm.outputs.id != '')
+    name: Test ${{ matrix.arch }} (matrix)
     continue-on-error: true
     strategy:
       matrix:
         include:
-          - instance: g4dn
-            runner: ${{ needs.g4dn.outputs.id }}
-          - instance: g4ad
-            runner: ${{ needs.g4ad.outputs.id }}
+          - arch: x86
+            runner: ${{ needs.x86.outputs.id }}
+          - arch: arm
+            runner: ${{ needs.arm.outputs.id }}
       fail-fast: false
     runs-on: ${{ matrix.runner }}
     steps:
-    - name: Matrix GPU test on ${{ matrix.instance }}.xlarge
+    - name: Matrix architecture test
       run: |
-        echo "Running on ${{ matrix.instance }}.xlarge"
+        echo "Running on ${{ matrix.arch }}"
+        echo "Architecture: $(uname -m)"
         echo "Instance type: $(curl -s http://169.254.169.254/latest/meta-data/instance-type)"
 
-        # Check GPU based on instance type
-        if [[ "${{ matrix.instance }}" == "g4dn" ]]; then
-          echo "Testing NVIDIA GPU..."
-          nvidia-smi
-        elif [[ "${{ matrix.instance }}" == "g4ad" ]]; then
-          echo "Testing AMD GPU..."
-          lspci | grep -i "vga\|display\|3d\|amd"
+        # Verify expected architecture
+        if [[ "${{ matrix.arch }}" == "x86" ]]; then
+          echo "Verifying x86_64 architecture..."
+          [[ "$(uname -m)" == "x86_64" ]] && echo "✓ Confirmed x86_64" || exit 1
+        elif [[ "${{ matrix.arch }}" == "arm" ]]; then
+          echo "Verifying ARM architecture..."
+          [[ "$(uname -m)" == "aarch64" ]] && echo "✓ Confirmed aarch64" || exit 1
         fi

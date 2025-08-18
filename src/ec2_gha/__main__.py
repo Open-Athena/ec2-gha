@@ -1,4 +1,14 @@
 from ec2_gha.start import StartAWS
+from ec2_gha.defaults import (
+    EC2_INSTANCE_TYPE,
+    INSTANCE_COUNT,
+    INSTANCE_NAME,
+    MAX_INSTANCE_LIFETIME,
+    RUNNER_GRACE_PERIOD,
+    RUNNER_INITIAL_GRACE_PERIOD,
+    RUNNER_POLL_INTERVAL,
+    RUNNER_REGISTRATION_TIMEOUT,
+)
 from gha_runner.gh import GitHubInstance
 from gha_runner.clouddeployment import DeployInstance
 from gha_runner.helper.input import EnvVarBuilder, check_required
@@ -10,8 +20,9 @@ def main():
     required = ["GH_PAT", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
     # Check that everything exists
     check_required(env, required)
-    # Timeout for waiting for runner to register with GitHub (default 5 minutes)
-    timeout = int(os.environ.get("INPUT_RUNNER_REGISTRATION_TIMEOUT", "300"))
+    # Timeout for waiting for runner to register with GitHub
+    timeout_str = os.environ.get("INPUT_RUNNER_REGISTRATION_TIMEOUT", "").strip()
+    timeout = int(timeout_str) if timeout_str else int(RUNNER_REGISTRATION_TIMEOUT)
 
     token = os.environ["GH_PAT"]
     # Make a copy of environment variables for immutability
@@ -51,7 +62,21 @@ def main():
         raise Exception("Repo cannot be empty")
 
     # Instance count is not a keyword arg for StartAWS, so we remove it
-    instance_count = params.pop("instance_count")
+    instance_count = params.pop("instance_count", INSTANCE_COUNT)
+
+    # Apply defaults that weren't set via inputs or vars
+    params.setdefault("max_instance_lifetime", MAX_INSTANCE_LIFETIME)
+    params.setdefault("runner_grace_period", RUNNER_GRACE_PERIOD)
+    params.setdefault("runner_initial_grace_period", RUNNER_INITIAL_GRACE_PERIOD)
+    params.setdefault("runner_poll_interval", RUNNER_POLL_INTERVAL)
+    params.setdefault("instance_name", INSTANCE_NAME)
+    params.setdefault("instance_type", EC2_INSTANCE_TYPE)
+    params.setdefault("region_name", "us-east-1")  # Default AWS region
+
+    # image_id is required - must be provided via input or vars
+    if not params.get("image_id"):
+        raise Exception("EC2 AMI ID (ec2_image_id) must be provided via input or vars.EC2_IMAGE_ID")
+    # home_dir will be set to AUTO in start.py if not provided
 
     gh = GitHubInstance(token=token, repo=repo)
     # This will create a new instance of StartAWS and configure it correctly
