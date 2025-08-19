@@ -16,6 +16,9 @@ inputs:
   cloudwatch_logs_group:
     description: "CloudWatch Logs group name for streaming runner logs (leave empty to disable)"
     required: false
+  debug:
+    description: "Enable debug output (set -x) in runner setup script"
+    required: false
   ec2_home_dir:
     description: "Home directory on the AWS instance (falls back to vars.EC2_HOME_DIR, then auto-detection)"
     required: false

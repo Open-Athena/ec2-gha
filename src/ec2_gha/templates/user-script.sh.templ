@@ -3,7 +3,12 @@ set -e
 
 # Enable debug tracing to a file for troubleshooting
 exec 2> >(tee -a /var/log/runner-debug.log >&2)
-set -x
+
+# Conditionally enable debug mode
+if [ "$debug" = "true" ] || [ "$debug" = "True" ] || [ "$debug" = "1" ]; then
+  echo "[DEBUG] Debug mode enabled - set -x active" >&2
+  set -x
+fi
 
 log() { echo "[$$(date '+%Y-%m-%d %H:%M:%S')] $$1" | tee -a /var/log/runner-setup.log; }
 log_error() { log "ERROR: $$1" >&2; }

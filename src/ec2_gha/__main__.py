@@ -34,6 +34,7 @@ def main():
         .update_state("INPUT_AWS_SUBNET_ID", "subnet_id")
         .update_state("INPUT_AWS_TAGS", "tags", is_json=True)
         .update_state("INPUT_CLOUDWATCH_LOGS_GROUP", "cloudwatch_logs_group")
+        .update_state("INPUT_DEBUG", "debug")
         .update_state("INPUT_EC2_HOME_DIR", "home_dir")
         .update_state("INPUT_EC2_IMAGE_ID", "image_id")
         .update_state("INPUT_EC2_INSTANCE_PROFILE", "iam_instance_profile")
