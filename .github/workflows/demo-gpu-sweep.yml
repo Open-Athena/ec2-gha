@@ -1,4 +1,4 @@
-name: Demo – minimal EC2 GPU job
+name: Demo – GPU instance sweep
 on:
   workflow_dispatch:
 jobs:

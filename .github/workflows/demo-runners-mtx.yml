@@ -1,4 +1,4 @@
-name: Demo – minimal EC2 GPU job
+name: Demo – multiple runners on single instance
 on:
   workflow_dispatch:
 jobs:
