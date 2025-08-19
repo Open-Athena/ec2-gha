@@ -337,12 +337,14 @@ mkdir -p $$V-jobs
 touch $$V-last-activity
 
 # Set up periodic termination check using systemd
-cat > /etc/systemd/system/runner-termination-check.service << 'EOF'
+cat > /etc/systemd/system/runner-termination-check.service << EOF
 [Unit]
 Description=Check GitHub runner termination conditions
 After=network.target
 [Service]
 Type=oneshot
+Environment="RUNNER_GRACE_PERIOD=$runner_grace_period"
+Environment="RUNNER_INITIAL_GRACE_PERIOD=$runner_initial_grace_period"
 ExecStart=/usr/local/bin/check-runner-termination.sh
 EOF
 
@@ -424,17 +426,29 @@ for config in configs:
     runner_name = f'ec2-{instance_id}-{idx}'
     cmd = ['./config.sh', '--url', f'https://github.com/{repo}', '--token', token,
            '--labels', labels, '--name', runner_name, '--disableupdate', '--unattended']
-    result = subprocess.run(cmd, env={'RUNNER_ALLOW_RUNASROOT': '1'})
-    if result.returncode != 0:
-        print(f'Failed to register runner {idx}')
+    result = subprocess.run(cmd, env={'RUNNER_ALLOW_RUNASROOT': '1'}, capture_output=True, text=True)
+
+    # Check if registration succeeded (even if config.sh returns non-zero)
+    if 'Runner successfully added' in result.stdout:
+        print(f'Runner {idx} registered successfully', file=sys.stderr)
+    elif result.returncode != 0:
+        print(f'Failed to register runner {idx}: {result.stderr}', file=sys.stderr)
         sys.exit(1)
 
-    # Start runner in background
     # Inherit system environment and add RUNNER_ALLOW_RUNASROOT
     runner_env = os.environ.copy()
     runner_env['RUNNER_ALLOW_RUNASROOT'] = '1'
-    subprocess.Popen(['./run.sh'], env=runner_env)
-    print(f'Started runner {idx} in {runner_dir}')
+    # Start runner in background (use full path and handle errors)
+    try:
+        proc = subprocess.Popen([f'{runner_dir}/run.sh'],
+                               env=runner_env,
+                               cwd=runner_dir,
+                               stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL)
+        print(f'Started runner {idx} in {runner_dir} (PID: {proc.pid})', file=sys.stderr)
+    except Exception as e:
+        print(f'Failed to start runner {idx}: {e}', file=sys.stderr)
+        sys.exit(1)
 "
 
 if [ $$? -ne 0 ]; then
