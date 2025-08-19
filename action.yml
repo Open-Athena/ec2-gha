@@ -69,6 +69,10 @@ inputs:
   runner_registration_timeout:
     description: "Maximum seconds to wait for runner to register with GitHub (falls back to vars.RUNNER_REGISTRATION_TIMEOUT, then 360 = 6 minutes)"
     required: false
+  runners_per_instance:
+    description: "Number of runners to register per instance (each in separate directories to allow concurrent jobs)"
+    required: false
+    default: "1"
   ssh_pubkey:
     description: "SSH public key to add to authorized_keys for debugging access"
     required: false

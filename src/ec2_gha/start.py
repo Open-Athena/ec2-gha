@@ -50,6 +50,8 @@ class StartAWS(CreateCloudInstance):
         Grace period in seconds before terminating instance after last job completes. Defaults to "60".
     runner_poll_interval : str
         How often (in seconds) to check termination conditions. Defaults to "10".
+    runners_per_instance : int
+        Number of runners to register per instance. Defaults to 1.
     script : str
         The script to run on the instance. Defaults to an empty string.
     security_group_id : str
@@ -71,6 +73,7 @@ class StartAWS(CreateCloudInstance):
     repo: str
     cloudwatch_logs_group: str = ""
     gh_runner_tokens: list[str] = field(default_factory=list)
+    grouped_runner_tokens: list[list[str]] = field(default_factory=list)
     home_dir: str = ""
     iam_instance_profile: str = ""
     instance_name: str = ""
@@ -81,6 +84,7 @@ class StartAWS(CreateCloudInstance):
     runner_grace_period: str = "60"
     runner_initial_grace_period: str = "180"
     runner_poll_interval: str = "10"
+    runners_per_instance: int = 1
     runner_release: str = ""
     script: str = ""
     security_group_id: str = ""
@@ -313,10 +317,26 @@ class StartAWS(CreateCloudInstance):
         if not self.home_dir:
             self.home_dir = AUTO
         id_dict = {}
-        for idx, token in enumerate(self.gh_runner_tokens):
-            label = gh.GitHubInstance.generate_random_label()
-            # Combine user labels with the generated runner label
-            labels = f"{self.labels},{label}" if self.labels else label
+        # Determine which tokens to use
+        tokens_to_use = self.grouped_runner_tokens if self.grouped_runner_tokens else [[t] for t in self.gh_runner_tokens]
+
+        for idx, instance_tokens in enumerate(tokens_to_use):
+            # Generate labels and tokens for all runners on this instance
+            runner_configs = []
+            for runner_idx, token in enumerate(instance_tokens):
+                label = gh.GitHubInstance.generate_random_label()
+                # Combine user labels with the generated runner label
+                labels = f"{self.labels},{label}" if self.labels else label
+                runner_configs.append({
+                    "token": token,
+                    "labels": labels,
+                    "runner_idx": runner_idx
+                })
+
+            # Always provide runner_configs, even for single runner (backward compatibility)
+            # This simplifies the template logic
+            primary_labels = runner_configs[0]["labels"] if runner_configs else ""
+            base_token = instance_tokens[0] if instance_tokens else ""
 
             user_data_params = {
                 "cloudwatch_logs_group": self.cloudwatch_logs_group,
@@ -324,7 +344,7 @@ class StartAWS(CreateCloudInstance):
                 "github_run_id": environ.get("GITHUB_RUN_ID", ""),
                 "github_run_number": environ.get("GITHUB_RUN_NUMBER", ""),
                 "homedir": self.home_dir,
-                "labels": labels,
+                "labels": primary_labels,  # Keep for backward compatibility
                 "max_instance_lifetime": self.max_instance_lifetime,
                 "repo": self.repo,
                 "runner_grace_period": self.runner_grace_period,
@@ -332,9 +352,12 @@ class StartAWS(CreateCloudInstance):
                 "runner_poll_interval": self.runner_poll_interval,
                 "runner_registration_timeout": environ.get("INPUT_RUNNER_REGISTRATION_TIMEOUT", "").strip() or RUNNER_REGISTRATION_TIMEOUT,
                 "runner_release": self.runner_release,
+                "runners_per_instance": str(self.runners_per_instance),
+                # Base64 encode the JSON to avoid shell escaping issues
+                "runner_configs_b64": __import__('base64').b64encode(json.dumps(runner_configs).encode()).decode(),
                 "script": self.script,
                 "ssh_pubkey": self.ssh_pubkey,
-                "token": token,
+                "token": base_token,  # Keep for backward compatibility
                 "userdata": self.userdata,
             }
             params = self._build_aws_params(user_data_params, idx=idx)
@@ -362,7 +385,13 @@ class StartAWS(CreateCloudInstance):
                 raise
             instances = result["Instances"]
             id = instances[0]["InstanceId"]
-            id_dict[id] = label
+            # For multiple runners per instance, store all labels
+            if self.runners_per_instance > 1:
+                all_labels = [config["labels"] for config in runner_configs]
+                id_dict[id] = all_labels
+            else:
+                # For backward compatibility, store single label as string
+                id_dict[id] = primary_labels
         return id_dict
 
     def wait_until_ready(self, ids: list[str], **kwargs):
@@ -398,12 +427,19 @@ class StartAWS(CreateCloudInstance):
             A dictionary of instance IDs and labels.
 
         """
-        github_labels = list(mapping.values())
+        # Flatten all labels from all instances
+        github_labels = []
+        for labels in mapping.values():
+            if isinstance(labels, list):
+                github_labels.extend(labels)
+            else:
+                github_labels.append(labels)
+
         output("mapping", json.dumps(mapping))
         output("instances", json.dumps(github_labels))
 
         # For single instance use, output simplified values
-        if len(mapping) == 1:
+        if len(mapping) == 1 and self.runners_per_instance == 1:
             instance_id = list(mapping.keys())[0]
             label = list(mapping.values())[0]
             output("instance-id", instance_id)

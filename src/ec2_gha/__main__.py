@@ -48,6 +48,7 @@ def main():
         .update_state("INPUT_RUNNER_GRACE_PERIOD", "runner_grace_period")
         .update_state("INPUT_RUNNER_INITIAL_GRACE_PERIOD", "runner_initial_grace_period")
         .update_state("INPUT_RUNNER_POLL_INTERVAL", "runner_poll_interval")
+        .update_state("INPUT_RUNNERS_PER_INSTANCE", "runners_per_instance", type_hint=int)
         .update_state("INPUT_SSH_PUBKEY", "ssh_pubkey")
         .update_state("AWS_REGION", "region_name")        # default
         .update_state("INPUT_AWS_REGION", "region_name")  # input override
@@ -61,8 +62,9 @@ def main():
     if repo is None:
         raise Exception("Repo cannot be empty")
 
-    # Instance count is not a keyword arg for StartAWS, so we remove it
+    # Instance count and runners_per_instance are not keyword args for StartAWS, so we remove them
     instance_count = params.pop("instance_count", INSTANCE_COUNT)
+    runners_per_instance = params.pop("runners_per_instance", 1)
 
     # Apply defaults that weren't set via inputs or vars
     params.setdefault("max_instance_lifetime", MAX_INSTANCE_LIFETIME)
@@ -79,6 +81,22 @@ def main():
     # home_dir will be set to AUTO in start.py if not provided
 
     gh = GitHubInstance(token=token, repo=repo)
+
+    # Pass runners_per_instance to StartAWS
+    params["runners_per_instance"] = runners_per_instance
+
+    # Generate all the tokens we need upfront
+    # Each instance needs runners_per_instance tokens
+    total_runners = instance_count * runners_per_instance
+    if runners_per_instance > 1:
+        # Generate all tokens upfront
+        all_tokens = gh.create_runner_tokens(total_runners)
+        # Group tokens by instance (each instance gets runners_per_instance tokens)
+        grouped_tokens = []
+        for i in range(0, total_runners, runners_per_instance):
+            grouped_tokens.append(all_tokens[i:i+runners_per_instance])
+        params["grouped_runner_tokens"] = grouped_tokens
+
     # This will create a new instance of StartAWS and configure it correctly
     deployment = DeployInstance(
         provider_type=StartAWS,
