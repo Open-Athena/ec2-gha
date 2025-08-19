@@ -334,10 +334,10 @@ class StartAWS(CreateCloudInstance):
                     "runner_idx": runner_idx
                 })
 
-            # Always provide runner_configs, even for single runner (backward compatibility)
-            # This simplifies the template logic
-            primary_labels = runner_configs[0]["labels"] if runner_configs else ""
-            base_token = instance_tokens[0] if instance_tokens else ""
+            # Simplify runner configs to save template space
+            # Pass tokens as space-delimited, labels as pipe-delimited
+            runner_tokens = " ".join(config["token"] for config in runner_configs)
+            runner_labels = "|".join(config["labels"] for config in runner_configs)
 
             user_data_params = {
                 "cloudwatch_logs_group": self.cloudwatch_logs_group,
@@ -346,7 +346,6 @@ class StartAWS(CreateCloudInstance):
                 "github_run_id": environ.get("GITHUB_RUN_ID", ""),
                 "github_run_number": environ.get("GITHUB_RUN_NUMBER", ""),
                 "homedir": self.home_dir,
-                "labels": primary_labels,  # Keep for backward compatibility
                 "max_instance_lifetime": self.max_instance_lifetime,
                 "repo": self.repo,
                 "runner_grace_period": self.runner_grace_period,
@@ -355,11 +354,10 @@ class StartAWS(CreateCloudInstance):
                 "runner_registration_timeout": environ.get("INPUT_RUNNER_REGISTRATION_TIMEOUT", "").strip() or RUNNER_REGISTRATION_TIMEOUT,
                 "runner_release": self.runner_release,
                 "runners_per_instance": str(self.runners_per_instance),
-                # Base64 encode the JSON to avoid shell escaping issues
-                "runner_configs_b64": __import__('base64').b64encode(json.dumps(runner_configs).encode()).decode(),
+                "runner_tokens": runner_tokens,  # Space-delimited tokens
+                "runner_labels": runner_labels,  # Pipe-delimited labels
                 "script": self.script,
                 "ssh_pubkey": self.ssh_pubkey,
-                "token": base_token,  # Keep for backward compatibility
                 "userdata": self.userdata,
             }
             params = self._build_aws_params(user_data_params, idx=idx)
@@ -393,7 +391,7 @@ class StartAWS(CreateCloudInstance):
                 id_dict[id] = all_labels
             else:
                 # For backward compatibility, store single label as string
-                id_dict[id] = primary_labels
+                id_dict[id] = runner_configs[0]["labels"] if runner_configs else ""
         return id_dict
 
     def wait_until_ready(self, ids: list[str], **kwargs):

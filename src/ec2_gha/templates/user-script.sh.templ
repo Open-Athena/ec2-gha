@@ -402,91 +402,115 @@ fi
 # Process each runner configuration
 log "Setting up $$RUNNERS_PER_INSTANCE runner(s)"
 
-# Check for Python3 availability
-if ! command -v python3 >/dev/null 2>&1; then
-  log_error "Python3 is required but not found. Cannot configure runners."
-  terminate_instance "Python3 not available on this AMI"
-fi
+# Function to configure a single runner
+# Export it so it's available to subprocesses
+configure_runner() {
+  local idx=$$1
+  local token=$$2
+  local labels=$$3
+  local homedir=$$4
+  local repo=$$5
+  local instance_id=$$6
+  local runner_grace_period=$$7
+  local runner_initial_grace_period=$$8
 
-python3 -c "
-import json, sys, os, subprocess, traceback, base64
+  log "Configuring runner $$idx..."
 
-# Runner configurations passed from Python (base64 encoded to avoid shell escaping issues)
-runner_configs_b64 = '$runner_configs_b64'
-runner_configs_json = base64.b64decode(runner_configs_b64).decode()
+  # Create runner directory
+  local runner_dir="$$homedir/runner-$$idx"
+  mkdir -p "$$runner_dir"
+  cd "$$runner_dir"
 
-try:
-    configs = json.loads(runner_configs_json)
-except Exception as e:
-    print(f'ERROR: Failed to parse runner configs: {e}', file=sys.stderr)
-    print(f'Input was: {runner_configs_json}', file=sys.stderr)
-    traceback.print_exc()
-    sys.exit(1)
-homedir = '$$homedir'  # Use shell variable (already resolved from AUTO)
-repo = '$repo'
-instance_id = '$$INSTANCE_ID'
-metadata_labels = '$$METADATA_LABELS'
+  # Extract runner
+  tar -xzf /tmp/runner.tar.gz
 
-print(f'Processing {len(configs)} runner configuration(s)', file=sys.stderr)
-for config in configs:
-    idx = config['runner_idx']
-    token = config['token']
-    labels = config['labels'] + metadata_labels
+  # Save token for deregistration
+  echo "$$token" > .runner-token
 
-    print(f'Configuring runner {idx}...', file=sys.stderr)
+  # Create env file
+  cat > .env << EOF
+ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/job-started-hook.sh
+ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/job-completed-hook.sh
+RUNNER_HOME=$$runner_dir
+RUNNER_INDEX=$$idx
+RUNNER_GRACE_PERIOD=$$runner_grace_period
+RUNNER_INITIAL_GRACE_PERIOD=$$runner_initial_grace_period
+EOF
 
-    # Create runner directory
-    runner_dir = f'{homedir}/runner-{idx}'
-    os.makedirs(runner_dir, exist_ok=True)
-    os.chdir(runner_dir)
+  # Configure runner
+  local runner_name="ec2-$$instance_id-$$idx"
+  RUNNER_ALLOW_RUNASROOT=1 ./config.sh \
+    --url "https://github.com/$$repo" \
+    --token "$$token" \
+    --labels "$$labels" \
+    --name "$$runner_name" \
+    --disableupdate \
+    --unattended 2>&1 | tee /tmp/runner-$$idx-config.log
 
-    # Extract runner
-    subprocess.run(['tar', '-xzf', '/tmp/runner.tar.gz'], check=True)
+  if grep -q "Runner successfully added" /tmp/runner-$$idx-config.log; then
+    log "Runner $$idx registered successfully"
+  else
+    log_error "Failed to register runner $$idx"
+    return 1
+  fi
 
-    # Save token for deregistration
-    with open('.runner-token', 'w') as f:
-        f.write(token)
+  # Start runner in background
+  RUNNER_ALLOW_RUNASROOT=1 nohup ./run.sh > /dev/null 2>&1 &
+  local pid=$$!
+  log "Started runner $$idx in $$runner_dir (PID: $$pid)"
 
-    # Create env file
-    with open('.env', 'w') as f:
-        f.write(f'ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/job-started-hook.sh\\n')
-        f.write(f'ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/job-completed-hook.sh\\n')
-        f.write(f'RUNNER_HOME={runner_dir}\\n')
-        f.write(f'RUNNER_INDEX={idx}\\n')
-        f.write(f'RUNNER_GRACE_PERIOD=$runner_grace_period\\n')
-        f.write(f'RUNNER_INITIAL_GRACE_PERIOD=$runner_initial_grace_period\\n')
+  return 0
+}
+# Export the function so it's available to child processes
+export -f configure_runner
+export -f log
+export -f log_error
 
-    # Configure runner
-    runner_name = f'ec2-{instance_id}-{idx}'
-    cmd = ['./config.sh', '--url', f'https://github.com/{repo}', '--token', token,
-           '--labels', labels, '--name', runner_name, '--disableupdate', '--unattended']
-    result = subprocess.run(cmd, env={'RUNNER_ALLOW_RUNASROOT': '1'}, capture_output=True, text=True)
+# Parse simple delimited format: space-delimited tokens, pipe-delimited labels
+IFS=' ' read -ra tokens <<< "$runner_tokens"
+IFS='|' read -ra labels <<< "$runner_labels"
 
-    # Check if registration succeeded (even if config.sh returns non-zero)
-    if 'Runner successfully added' in result.stdout:
-        print(f'Runner {idx} registered successfully', file=sys.stderr)
-    elif result.returncode != 0:
-        print(f'Failed to register runner {idx}: {result.stderr}', file=sys.stderr)
-        sys.exit(1)
+num_runners=$${#tokens[@]}
+log "Configuring $$num_runners runner(s) in parallel"
 
-    # Inherit system environment and add RUNNER_ALLOW_RUNASROOT
-    runner_env = os.environ.copy()
-    runner_env['RUNNER_ALLOW_RUNASROOT'] = '1'
-    # Start runner in background (use full path and handle errors)
-    try:
-        proc = subprocess.Popen([f'{runner_dir}/run.sh'],
-                               env=runner_env,
-                               cwd=runner_dir,
-                               stdout=subprocess.DEVNULL,
-                               stderr=subprocess.DEVNULL)
-        print(f'Started runner {idx} in {runner_dir} (PID: {proc.pid})', file=sys.stderr)
-    except Exception as e:
-        print(f'Failed to start runner {idx}: {e}', file=sys.stderr)
-        sys.exit(1)
-"
+# Start configuration for each runner in background
+pids=()
+for i in $${!tokens[@]}; do
+  token=$${tokens[$$i]}
+  label=$${labels[$$i]:-}  # Default to empty if no label
 
-if [ $$? -ne 0 ]; then
-  terminate_instance "Failed to register runners"
+  if [ -z "$$token" ]; then
+    log_error "No token for runner $$i"
+    continue
+  fi
+
+  # Start configuration in background
+  (
+    configure_runner $$i "$$token" "$${label}$$METADATA_LABELS" "$$homedir" "$repo" "$$INSTANCE_ID" "$runner_grace_period" "$runner_initial_grace_period"
+    echo $$? > /tmp/runner-$$i-status
+  ) &
+  pids+=($$!)
+
+  log "Started configuration for runner $$i (PID: $${pids[-1]})"
+done
+
+# Wait for all background jobs to complete
+log "Waiting for all runner configurations to complete..."
+failed=0
+for i in $${!pids[@]}; do
+  wait $${pids[$$i]}
+  if [ -f /tmp/runner-$$i-status ]; then
+    status=$$(cat /tmp/runner-$$i-status)
+    rm -f /tmp/runner-$$i-status
+    if [ "$$status" != "0" ]; then
+      log_error "Runner $$i configuration failed"
+      failed=1
+    fi
+  fi
+done
+
+if [ $$failed -ne 0 ]; then
+  terminate_instance "One or more runners failed to register"
 fi
 
 log "All runners registered and started"
