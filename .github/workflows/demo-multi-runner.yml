@@ -7,7 +7,7 @@ on:
         required: false
         type: string
         default: "3"
-      sleep_duration:
+      sleep:
         description: "Sleep duration in seconds for each job"
         required: false
         type: string
@@ -18,7 +18,7 @@ on:
         required: false
         type: string
         default: "3"
-      sleep_duration:
+      sleep:
         required: false
         type: string
         default: "10"
@@ -64,7 +64,7 @@ jobs:
       - name: Simulate workload
         run: |
           # All runners on same instance run independently
-          DURATION=${{ inputs.sleep_duration }}
+          DURATION=${{ inputs.sleep }}
           echo "Starting at: $(date '+%Y-%m-%d %H:%M:%S.%3N')"
           echo "Simulating workload for ${DURATION} seconds..."
           sleep $DURATION
@@ -73,9 +73,9 @@ jobs:
       - name: Verify parallelism
         run: |
           echo "This job ran in parallel with other matrix jobs on the SAME instance"
-          echo "With ${{ inputs.runners_per_instance }} runners and ${{ inputs.sleep_duration }}s sleep:"
-          echo "- Sequential execution would take: $((${{ inputs.runners_per_instance }} * ${{ inputs.sleep_duration }}))s"
-          echo "- Parallel execution should take: ~${{ inputs.sleep_duration }}s (plus overhead)"
+          echo "With ${{ inputs.runners_per_instance }} runners and ${{ inputs.sleep }}s sleep:"
+          echo "- Sequential execution would take: $((${{ inputs.runners_per_instance }} * ${{ inputs.sleep }}))s"
+          echo "- Parallel execution should take: ~${{ inputs.sleep }}s (plus overhead)"
 
       - name: Show resource sharing
         run: |

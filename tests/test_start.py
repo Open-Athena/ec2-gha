@@ -34,11 +34,11 @@ def aws_params_user_data():
     """User data params for AWS params tests"""
     return {
         "cloudwatch_logs_group": "",  # Empty = disabled
+        "debug": "",  # Empty = disabled
         "github_run_id": "16725250800",
         "github_run_number": "42",
         "github_workflow": "CI",
         "homedir": "/home/ec2-user",
-        "labels": "label",
         "max_instance_lifetime": "360",
         "repo": "omsf-eco-infra/awsinfratesting",
         "runner_grace_period": "61",
@@ -46,9 +46,11 @@ def aws_params_user_data():
         "runner_poll_interval": "11",
         "runner_release": "test.tar.gz",
         "runner_registration_timeout": "300",
+        "runners_per_instance": "1",
+        "runner_tokens": "test",  # Space-delimited tokens
+        "runner_labels": "label",  # Pipe-delimited labels
         "script": "echo 'Hello, World!'",
         "ssh_pubkey": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host",
-        "token": "test",
         "userdata": "",
     }
 
