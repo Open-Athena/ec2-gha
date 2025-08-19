@@ -288,36 +288,36 @@ rm -f $$V-jobs/$${GITHUB_RUN_ID}-$${GITHUB_JOB}-$$RUNNER_IDX.job
 touch $$V-last-activity
 EOFC
 
-cat > /usr/local/bin/check-runner-termination.sh << 'EOFT'
+cat > /usr/local/bin/check-runner-termination.sh << EOFT
 #!/bin/bash
 exec >> /tmp/termination-check.log 2>&1
 source /usr/local/bin/runner-common-functions.sh
 V="/var/run/github-runner"
-A="$$V-last-activity"
-J="$$V-jobs"
-H="$$V-has-run-job"
+A="\$$V-last-activity"
+J="\$$V-jobs"
+H="\$$V-has-run-job"
 
-[ ! -f "$$A" ] && touch "$$A"
-L=$$(stat -c %Y "$$A" 2>/dev/null || echo 0)
-N=$$(date +%s)
-I=$$((N-L))
-[ -f "$$H" ] && G=$${RUNNER_GRACE_PERIOD:-60} || G=$${RUNNER_INITIAL_GRACE_PERIOD:-180}
-R=$$(grep -l '"status":"running"' $$J/*.job 2>/dev/null | wc -l || echo 0)
+[ ! -f "\$$A" ] && touch "\$$A"
+L=\$$(stat -c %Y "\$$A" 2>/dev/null || echo 0)
+N=\$$(date +%s)
+I=\$$((N-L))
+[ -f "\$$H" ] && G=\$${RUNNER_GRACE_PERIOD:-60} || G=\$${RUNNER_INITIAL_GRACE_PERIOD:-180}
+R=\$$(grep -l '"status":"running"' \$$J/*.job 2>/dev/null | wc -l || echo 0)
 
-if [ $$R -eq 0 ] && [ $$I -gt $$G ]; then
-  log "TERMINATING: idle $$I > grace $$G"
+if [ \$$R -eq 0 ] && [ \$$I -gt \$$G ]; then
+  log "TERMINATING: idle \$$I > grace \$$G"
   # Deregister all runners
-  for RUNNER_DIR in $homedir/runner-*; do
-    if [ -d "$$RUNNER_DIR" ] && [ -f "$$RUNNER_DIR/config.sh" ]; then
-      log "Deregistering runner in $$RUNNER_DIR"
-      cd "$$RUNNER_DIR"
-      pkill -INT -f "$$RUNNER_DIR/run.sh" 2>/dev/null || true
+  for RUNNER_DIR in $$homedir/runner-*; do
+    if [ -d "\$$RUNNER_DIR" ] && [ -f "\$$RUNNER_DIR/config.sh" ]; then
+      log "Deregistering runner in \$$RUNNER_DIR"
+      cd "\$$RUNNER_DIR"
+      pkill -INT -f "\$$RUNNER_DIR/run.sh" 2>/dev/null || true
       sleep 1
       # Read token from stored file
-      if [ -f "$$RUNNER_DIR/.runner-token" ]; then
-        TOKEN=$$(cat "$$RUNNER_DIR/.runner-token")
-        RUNNER_ALLOW_RUNASROOT=1 ./config.sh remove --token $$TOKEN 2>&1
-        log "Deregistration exit: $$?"
+      if [ -f "\$$RUNNER_DIR/.runner-token" ]; then
+        TOKEN=\$$(cat "\$$RUNNER_DIR/.runner-token")
+        RUNNER_ALLOW_RUNASROOT=1 ./config.sh remove --token \$$TOKEN 2>&1
+        log "Deregistration exit: \$$?"
       fi
     fi
   done
@@ -325,7 +325,7 @@ if [ $$R -eq 0 ] && [ $$I -gt $$G ]; then
   log "Shutting down"
   sudo shutdown -h now
 else
-  [ $$R -gt 0 ] && log "$$R job(s) running" || log "Idle $$I/$$G sec"
+  [ \$$R -gt 0 ] && log "\$$R job(s) running" || log "Idle \$$I/\$$G sec"
 fi
 EOFT
 
