@@ -72,6 +72,7 @@ class StartAWS(CreateCloudInstance):
     region_name: str
     repo: str
     cloudwatch_logs_group: str = ""
+    debug: str = ""
     gh_runner_tokens: list[str] = field(default_factory=list)
     grouped_runner_tokens: list[list[str]] = field(default_factory=list)
     home_dir: str = ""
@@ -340,6 +341,7 @@ class StartAWS(CreateCloudInstance):
 
             user_data_params = {
                 "cloudwatch_logs_group": self.cloudwatch_logs_group,
+                "debug": self.debug,
                 "github_workflow": environ.get("GITHUB_WORKFLOW", ""),
                 "github_run_id": environ.get("GITHUB_RUN_ID", ""),
                 "github_run_number": environ.get("GITHUB_RUN_NUMBER", ""),

@@ -38,6 +38,11 @@ on:
         description: "CloudWatch Logs group name for streaming runner logs (leave empty to disable)"
         required: false
         type: string
+      debug:
+        description: "Enable debug output (set -x) in runner setup script"
+        required: false
+        type: boolean
+        default: false
       ec2_home_dir:
         description: "Home directory on the AWS instance (falls back to vars.EC2_HOME_DIR, then auto-detection)"
         required: false
@@ -165,6 +170,7 @@ jobs:
           aws_region: ${{ inputs.aws_region || vars.AWS_REGION }}
           aws_tags: ${{ inputs.aws_tags }}
           cloudwatch_logs_group: ${{ inputs.cloudwatch_logs_group || vars.CLOUDWATCH_LOGS_GROUP }}
+          debug: ${{ inputs.debug }}
           ec2_home_dir: ${{ inputs.ec2_home_dir || vars.EC2_HOME_DIR }}
           ec2_image_id: ${{ inputs.ec2_image_id || vars.EC2_IMAGE_ID }}
           ec2_instance_profile: ${{ inputs.ec2_instance_profile || vars.EC2_INSTANCE_PROFILE }}
