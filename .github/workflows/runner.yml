@@ -105,6 +105,11 @@ on:
         description: "Maximum seconds to wait for runner to register with GitHub (falls back to vars.RUNNER_REGISTRATION_TIMEOUT, then 360 = 6 minutes)"
         required: false
         type: string
+      runners_per_instance:
+        description: "Number of runners to register per instance (each in separate directories to allow concurrent jobs)"
+        required: false
+        type: string
+        default: "1"
       ssh_pubkey:
         description: "SSH public key to add to authorized_keys (falls back to vars.SSH_PUBKEY)"
         required: false
@@ -175,6 +180,7 @@ jobs:
           runner_initial_grace_period: ${{ inputs.runner_initial_grace_period || vars.RUNNER_INITIAL_GRACE_PERIOD }}
           runner_poll_interval: ${{ inputs.runner_poll_interval || vars.RUNNER_POLL_INTERVAL }}
           runner_registration_timeout: ${{ inputs.runner_registration_timeout || vars.RUNNER_REGISTRATION_TIMEOUT }}
+          runners_per_instance: ${{ inputs.runners_per_instance }}
           ssh_pubkey: ${{ inputs.ssh_pubkey || vars.SSH_PUBKEY }}
         env:
           GH_PAT: ${{ secrets.GH_SA_TOKEN }}

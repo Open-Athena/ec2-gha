@@ -23,3 +23,6 @@ jobs:
   demo-multi-job:
     uses: ./.github/workflows/demo-multi-job.yml
     secrets: inherit
+  demo-multi-runner:
+    uses: ./.github/workflows/demo-multi-runner.yml
+    secrets: inherit
