@@ -1,4 +1,4 @@
-name: Demo – comprehensive GPU workload with sequential jobs
+name: Demo – simulated GPU workload with sequential jobs
 on:
   workflow_dispatch:
     inputs:

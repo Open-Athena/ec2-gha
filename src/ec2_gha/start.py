@@ -229,6 +229,22 @@ class StartAWS(CreateCloudInstance):
         try:
             parsed = Template(template_content)
             runner_script = parsed.substitute(**kwargs)
+
+            # Strip comment lines to save space (but keep shebang lines)
+            lines = runner_script.split('\n')
+            filtered_lines = []
+            for line in lines:
+                stripped = line.strip()
+                # Keep shebang, empty lines, and non-comment lines
+                if not stripped or stripped.startswith('#!') or not stripped.startswith('#'):
+                    filtered_lines.append(line)
+
+            runner_script = '\n'.join(filtered_lines)
+
+            # Log the final size
+            script_size = len(runner_script)
+            print(f"UserData size: {script_size} bytes ({script_size/16384*100:.1f}% of 16KB limit)")
+
             return runner_script
         except Exception as e:
             raise Exception("Error parsing user data template") from e
@@ -324,7 +340,26 @@ class StartAWS(CreateCloudInstance):
             params = self._build_aws_params(user_data_params, idx=idx)
             if self.root_device_size > 0:
                 params = self._modify_root_disk_size(ec2, params)
-            result = ec2.run_instances(**params)
+
+            # Check UserData size before calling AWS
+            user_data_size = len(params.get("UserData", ""))
+            if user_data_size > 16384:
+                raise ValueError(
+                    f"UserData exceeds AWS limit: {user_data_size} bytes (limit: 16384 bytes, "
+                    f"over by: {user_data_size - 16384} bytes). "
+                    f"Template needs to be reduced by at least {user_data_size - 16384} bytes."
+                )
+
+            try:
+                result = ec2.run_instances(**params)
+            except Exception as e:
+                if "User data is limited to 16384 bytes" in str(e):
+                    # This shouldn't happen if our check above works, but just in case
+                    raise ValueError(
+                        f"UserData exceeds AWS limit: {user_data_size} bytes (limit: 16384 bytes, "
+                        f"over by: {user_data_size - 16384} bytes)"
+                    ) from e
+                raise
             instances = result["Instances"]
             id = instances[0]["InstanceId"]
             id_dict[id] = label
