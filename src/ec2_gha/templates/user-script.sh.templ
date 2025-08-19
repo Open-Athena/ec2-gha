@@ -247,43 +247,56 @@ tar --no-overwrite-dir -xzf runner.tar.gz
 cat > /usr/local/bin/job-started-hook.sh << 'EOFS'
 #!/bin/bash
 exec >> /tmp/job-started-hook.log 2>&1
+V="/var/run/github-runner"
 echo "[$$(date)] ${log_prefix_job_started} $${GITHUB_JOB}"
-mkdir -p /var/run/github-runner-jobs
-echo '{"status":"running"}' > /var/run/github-runner-jobs/$${GITHUB_RUN_ID}-$${GITHUB_JOB}.job
-touch /var/run/github-runner-last-activity /var/run/github-runner-has-run-job
+mkdir -p $$V-jobs
+echo '{"status":"running"}' > $$V-jobs/$${GITHUB_RUN_ID}-$${GITHUB_JOB}.job
+touch $$V-last-activity $$V-has-run-job
 EOFS
 
 cat > /usr/local/bin/job-completed-hook.sh << 'EOFC'
 #!/bin/bash
 exec >> /tmp/job-completed-hook.log 2>&1
+V="/var/run/github-runner"
 echo "[$$(date)] ${log_prefix_job_completed} $${GITHUB_JOB}"
-rm -f /var/run/github-runner-jobs/$${GITHUB_RUN_ID}-$${GITHUB_JOB}.job
-touch /var/run/github-runner-last-activity
+rm -f $$V-jobs/$${GITHUB_RUN_ID}-$${GITHUB_JOB}.job
+touch $$V-last-activity
 EOFC
 
-cat > /usr/local/bin/check-runner-termination.sh << 'EOFT'
+cat > /usr/local/bin/check-runner-termination.sh << EOFT
 #!/bin/bash
 exec >> /tmp/termination-check.log 2>&1
 source /usr/local/bin/runner-common-functions.sh
-A="/var/run/github-runner-last-activity"
-J="/var/run/github-runner-jobs"
-H="/var/run/github-runner-has-run-job"
-HOMEDIR="$homedir"
-TOKEN="$token"
-[ ! -f "$$A" ] && touch "$$A"
-L=$$(stat -c %Y "$$A" 2>/dev/null || echo 0)
-I=$$(($$(date +%s)-L))
-[ -f "$$H" ] && G=$${RUNNER_GRACE_PERIOD:-60} || G=$${RUNNER_INITIAL_GRACE_PERIOD:-180}
-R=$$(grep -l '"status":"running"' $$J/*.job 2>/dev/null | wc -l || echo 0)
-if [ $$R -eq 0 ] && [ $$I -gt $$G ]; then
-  echo "[$$(date)] Terminating: idle $$I > grace $$G"
-  [ -f "$$HOMEDIR/config.sh" ] && cd "$$HOMEDIR" && pkill -INT -f "Runner.Listener" 2>/dev/null || true
-  sleep 2
-  [ -f "$$HOMEDIR/config.sh" ] && RUNNER_ALLOW_RUNASROOT=1 ./config.sh remove --token $$TOKEN
+V="/var/run/github-runner"
+A="\$$V-last-activity"
+J="\$$V-jobs"
+H="\$$V-has-run-job"
+D="$$homedir"
+T="$token"
+
+[ ! -f "\$$A" ] && touch "\$$A"
+L=\$$(stat -c %Y "\$$A" 2>/dev/null || echo 0)
+N=\$$(date +%s)
+I=\$$((N-L))
+[ -f "\$$H" ] && G=\$${RUNNER_GRACE_PERIOD:-60} || G=\$${RUNNER_INITIAL_GRACE_PERIOD:-180}
+R=\$$(grep -l '"status":"running"' \$$J/*.job 2>/dev/null | wc -l || echo 0)
+
+if [ \$$R -eq 0 ] && [ \$$I -gt \$$G ]; then
+  log "TERMINATING: idle \$$I > grace \$$G"
+  if [ -f "\$$D/config.sh" ]; then
+    cd "\$$D" && pkill -INT -f "Runner.Listener" 2>/dev/null || true
+    sleep 2
+    log "Deregistering runner..."
+    RUNNER_ALLOW_RUNASROOT=1 ./config.sh remove --token \$$T 2>&1
+    log "Deregistration exit: \$$?"
+  else
+    log "ERROR: config.sh not found at \$$D"
+  fi
   flush_cloudwatch_logs
+  log "Shutting down"
   sudo shutdown -h now
 else
-  [ $$R -gt 0 ] && echo "[$$(date)] $$R job(s) running" || echo "[$$(date)] Idle $$I/$$G sec"
+  [ \$$R -gt 0 ] && log "\$$R job(s) running" || log "Idle \$$I/\$$G sec"
 fi
 EOFT
 
@@ -298,10 +311,11 @@ echo "RUNNER_INITIAL_GRACE_PERIOD=$runner_initial_grace_period" >> .env
 echo "RUNNER_POLL_INTERVAL=$runner_poll_interval" >> .env
 
 # Set up job tracking directory
-mkdir -p /var/run/github-runner-jobs
+V="/var/run/github-runner"
+mkdir -p $$V-jobs
 
 # Create initial activity timestamp
-touch /var/run/github-runner-last-activity
+touch $$V-last-activity
 
 # Set up periodic termination check using systemd
 cat > /etc/systemd/system/runner-termination-check.service << 'EOF'
@@ -397,6 +411,7 @@ fi
 log "Starting runner"
 # Create marker file for cleanup service
 touch /var/run/github-runner-started
+
 # Ensure CloudWatch agent can read diagnostic logs
 # The cwagent user needs to traverse into $homedir to reach _diag
 # Make $homedir world-executable (but not readable) so cwagent can traverse it
