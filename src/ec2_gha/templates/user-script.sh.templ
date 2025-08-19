@@ -173,23 +173,36 @@ if [ "$cloudwatch_logs_group" != "" ]; then
   # Use a subshell to prevent CloudWatch failures from stopping the entire script
   (
 
-    # Wait for dpkg lock to be released (up to 2 minutes)
-    log "Waiting for dpkg lock to be released..."
-    timeout=120
-    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
-      if [ $$timeout -le 0 ]; then
-        log "WARNING: dpkg lock timeout, proceeding anyway"
-        break
-      fi
-      log "dpkg is locked, waiting... ($$timeout seconds remaining)"
-      sleep 5
-      timeout=$$((timeout - 5))
-    done
+    # Detect package manager and install CloudWatch agent
+    if command -v dpkg >/dev/null 2>&1; then
+      # Debian/Ubuntu
+      log "Detected dpkg-based system"
 
-    # Download and install CloudWatch agent
-    wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
-    dpkg -i -E ./amazon-cloudwatch-agent.deb
-    rm amazon-cloudwatch-agent.deb
+      # Wait for dpkg lock to be released (up to 2 minutes)
+      log "Waiting for dpkg lock to be released..."
+      timeout=120
+      while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
+        if [ $$timeout -le 0 ]; then
+          log "WARNING: dpkg lock timeout, proceeding anyway"
+          break
+        fi
+        log "dpkg is locked, waiting... ($$timeout seconds remaining)"
+        sleep 5
+        timeout=$$((timeout - 5))
+      done
+
+      wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
+      dpkg -i -E ./amazon-cloudwatch-agent.deb
+      rm amazon-cloudwatch-agent.deb
+    elif command -v rpm >/dev/null 2>&1; then
+      # RHEL/CentOS/Amazon Linux
+      log "Detected rpm-based system"
+      wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
+      rpm -U ./amazon-cloudwatch-agent.rpm
+      rm amazon-cloudwatch-agent.rpm
+    else
+      log "WARNING: Unable to detect package manager, skipping CloudWatch agent installation"
+    fi
 
     # Configure CloudWatch agent
     cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
@@ -269,7 +282,16 @@ else
   RUNNER_URL="$runner_release"
   log "x64 detected, using: $$RUNNER_URL"
 fi
-curl -L $$RUNNER_URL -o /tmp/runner.tar.gz
+
+# Check for curl or wget
+if command -v curl >/dev/null 2>&1; then
+  curl -L $$RUNNER_URL -o /tmp/runner.tar.gz
+elif command -v wget >/dev/null 2>&1; then
+  wget -q $$RUNNER_URL -O /tmp/runner.tar.gz
+else
+  log_error "Neither curl nor wget found. Cannot download runner."
+  terminate_instance "No download tool available"
+fi
 log "Downloaded runner binary"
 # Create shared job tracking scripts (used by all runners)
 cat > /usr/local/bin/job-started-hook.sh << 'EOFS'
@@ -379,6 +401,13 @@ fi
 
 # Process each runner configuration
 log "Setting up $$RUNNERS_PER_INSTANCE runner(s)"
+
+# Check for Python3 availability
+if ! command -v python3 >/dev/null 2>&1; then
+  log_error "Python3 is required but not found. Cannot configure runners."
+  terminate_instance "Python3 not available on this AMI"
+fi
+
 python3 -c "
 import json, sys, os, subprocess, traceback, base64
 
