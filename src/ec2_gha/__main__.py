@@ -13,6 +13,7 @@ from gha_runner.gh import GitHubInstance
 from gha_runner.clouddeployment import DeployInstance
 from gha_runner.helper.input import EnvVarBuilder, check_required
 import os
+from os import environ
 
 
 def main():
