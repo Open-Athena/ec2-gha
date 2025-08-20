@@ -59,7 +59,7 @@
             break
           fi
         done
-        
+      
         if [ -z "$homedir" ] || [ "$homedir" = "AUTO" ]; then
           homedir=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 && $6 ~ /^\\/home\\// {print $6}' | while read dir; do
             if [ -d "$dir" ]; then
@@ -80,11 +80,17 @@
       fi
       export homedir
       
-      cat > /usr/local/bin/runner-common.sh << EOSF
+      B=/usr/local/bin
+      V=/var/run/github-runner
+      
+      cat > $B/runner-common.sh << EOSF
       homedir="$homedir"
       debug="$debug"
       export homedir debug
       
+      EOSF
+      
+      cat >> $B/runner-common.sh << 'EOSF'
       
       log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/runner-setup.log; }
       log_error() { log "ERROR: $1" >&2; }
@@ -138,7 +144,7 @@
       
       debug_sleep_and_shutdown() {
         if [ "$debug" = "true" ] || [ "$debug" = "True" ] || [ "$debug" = "1" ]; then
-          log "Debug mode: Sleeping for 600 seconds before shutdown to allow debugging..."
+          log "Debug: Sleeping 600s before shutdown..."
           local ssh_user=$(basename "$homedir" 2>/dev/null || echo "ec2-user")
           local public_ip=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
           log "SSH into instance with: ssh ${ssh_user}@${public_ip}"
@@ -191,8 +197,24 @@
         tar -xzf /tmp/runner.tar.gz
       
         if [ -f ./bin/installdependencies.sh ]; then
-          log "Installing runner dependencies..."
-          sudo ./bin/installdependencies.sh >/dev/null 2>&1 || log "Warning: Some dependencies may have failed to install"
+          log "Installing dependencies..."
+          set +e
+          sudo ./bin/installdependencies.sh >/dev/null 2>&1
+          local deps_result=$?
+          set -e
+      
+          if [ $deps_result -ne 0 ]; then
+            log "Dependencies script failed, installing required packages manually..."
+            if command -v dnf >/dev/null 2>&1; then
+              sudo dnf install -y libicu lttng-ust >/dev/null 2>&1 || true
+            elif command -v yum >/dev/null 2>&1; then
+              sudo yum install -y libicu >/dev/null 2>&1 || true
+            elif command -v apt-get >/dev/null 2>&1; then
+              wait_for_dpkg_lock
+              sudo apt-get update >/dev/null 2>&1 || true
+              sudo apt-get install -y libicu-dev >/dev/null 2>&1 || true
+            fi
+          fi
         fi
       
         echo "$token" > .runner-token
@@ -223,12 +245,14 @@
         return 0
       }
       EOSF
-      chmod +x /usr/local/bin/runner-common.sh
-      source /usr/local/bin/runner-common.sh
+      
+      chmod +x $B/runner-common.sh
+      source $B/runner-common.sh
       
       logger "EC2-GHA: Starting userdata script"
       trap 'logger "EC2-GHA: Script failed at line $LINENO with exit code $?"' ERR
       trap 'terminate_instance "Setup script failed with error on line $LINENO"' ERR
+      trap 'if [ -f $V-watchdog-terminate ]; then terminate_instance "No runners registered within timeout"; else terminate_instance "Script terminated"; fi' TERM
       
       REGISTRATION_TIMEOUT="300"
       if ! [[ "$REGISTRATION_TIMEOUT" =~ ^[0-9]+$ ]]; then
@@ -236,19 +260,22 @@
         REGISTRATION_TIMEOUT=300
       fi
       logger "EC2-GHA: Registration timeout set to $REGISTRATION_TIMEOUT seconds"
+      touch $V-watchdog-active
       (
         log "Watchdog: Starting $REGISTRATION_TIMEOUT second timeout"
         sleep $REGISTRATION_TIMEOUT
-        if [ ! -f /var/run/github-runner-registered ]; then
+        if [ ! -f $V-registered ]; then
           log "Watchdog: Registration marker not found after timeout"
-          terminate_instance "Runner failed to register within $REGISTRATION_TIMEOUT seconds"
+          touch $V-watchdog-terminate
+          kill -TERM $$ 2>/dev/null || true
         else
           log "Watchdog: Registration marker found, exiting normally"
         fi
+        rm -f $V-watchdog-active
       ) &
       REGISTRATION_WATCHDOG_PID=$!
       log "Watchdog PID: $REGISTRATION_WATCHDOG_PID"
-      echo $REGISTRATION_WATCHDOG_PID > /var/run/github-runner-watchdog.pid
+      echo $REGISTRATION_WATCHDOG_PID > $V-watchdog.pid
       
       
       
@@ -282,16 +309,20 @@
           else
             log "WARNING: Unable to detect package manager, skipping CloudWatch agent installation"
           fi
+          P='"file_path":'
+          G=',"log_group_name":"","log_stream_name":"{instance_id}/'
+          Z='","timezone":"UTC"}'
+          H="$homedir"
           cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
       {"agent":{"run_as_user":"cwagent"},"logs":{"logs_collected":{"files":{"collect_list":[
-      {"file_path":"/var/log/runner-setup.log","log_group_name":"","log_stream_name":"{instance_id}/runner-setup","timezone":"UTC"},
-      {"file_path":"/var/log/runner-debug.log","log_group_name":"","log_stream_name":"{instance_id}/runner-debug","timezone":"UTC"},
-      {"file_path":"/tmp/job-started-hook.log","log_group_name":"","log_stream_name":"{instance_id}/job-started","timezone":"UTC"},
-      {"file_path":"/tmp/job-completed-hook.log","log_group_name":"","log_stream_name":"{instance_id}/job-completed","timezone":"UTC"},
-      {"file_path":"/tmp/termination-check.log","log_group_name":"","log_stream_name":"{instance_id}/termination","timezone":"UTC"},
-      {"file_path":"/tmp/runner-*-config.log","log_group_name":"","log_stream_name":"{instance_id}/runner-config","timezone":"UTC"},
-      {"file_path":"/home/ec2-user/_diag/Runner_**.log","log_group_name":"","log_stream_name":"{instance_id}/runner-diag","timezone":"UTC"},
-      {"file_path":"/home/ec2-user/_diag/Worker_**.log","log_group_name":"","log_stream_name":"{instance_id}/worker-diag","timezone":"UTC"}
+      {$P"/var/log/runner-setup.log"${G}runner-setup$Z,
+      {$P"/var/log/runner-debug.log"${G}runner-debug$Z,
+      {$P"/tmp/job-started-hook.log"${G}job-started$Z,
+      {$P"/tmp/job-completed-hook.log"${G}job-completed$Z,
+      {$P"/tmp/termination-check.log"${G}termination$Z,
+      {$P"/tmp/runner-*-config.log"${G}runner-config$Z,
+      {$P"$H/_diag/Runner_**.log"${G}runner-diag$Z,
+      {$P"$H/_diag/Worker_**.log"${G}worker-diag$Z
       ]}}}}
       EOF
           /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
@@ -341,54 +372,50 @@
       fi
       log "Downloaded runner binary"
       
-      cat > /usr/local/bin/job-started-hook.sh << 'EOFS'
+      cat > $B/job-started-hook.sh << EOFS
       #!/bin/bash
       exec >> /tmp/job-started-hook.log 2>&1
-      V="/var/run/github-runner"
-      RUNNER_IDX="${RUNNER_INDEX:-0}"
-      echo "[$(date)] Runner-$RUNNER_IDX: Job started: ${GITHUB_JOB}"
+      I="\${RUNNER_INDEX:-0}"
+      echo "[\$(date)] Runner-\$I: Job started: \${GITHUB_JOB}"
       mkdir -p $V-jobs
-      echo '{\"status\":\"running\",\"runner\":\"'$RUNNER_IDX'\"}' > $V-jobs/${GITHUB_RUN_ID}-${GITHUB_JOB}-$RUNNER_IDX.job
+      echo '{"status":"running","runner":"'\$I'"}' > $V-jobs/\${GITHUB_RUN_ID}-\${GITHUB_JOB}-\$I.job
       touch $V-last-activity $V-has-run-job
       EOFS
       
-      cat > /usr/local/bin/job-completed-hook.sh << 'EOFC'
+      cat > $B/job-completed-hook.sh << EOFC
       #!/bin/bash
       exec >> /tmp/job-completed-hook.log 2>&1
-      V="/var/run/github-runner"
-      RUNNER_IDX="${RUNNER_INDEX:-0}"
-      echo "[$(date)] Runner-$RUNNER_IDX: Job completed: ${GITHUB_JOB}"
-      rm -f $V-jobs/${GITHUB_RUN_ID}-${GITHUB_JOB}-$RUNNER_IDX.job
+      I="\${RUNNER_INDEX:-0}"
+      echo "[\$(date)] Runner-\$I: Job completed: \${GITHUB_JOB}"
+      rm -f $V-jobs/\${GITHUB_RUN_ID}-\${GITHUB_JOB}-\$I.job
       touch $V-last-activity
       EOFC
       
-      cat > /usr/local/bin/check-runner-termination.sh << EOFT
+      cat > $B/check-runner-termination.sh << EOFT
       #!/bin/bash
       exec >> /tmp/termination-check.log 2>&1
-      source /usr/local/bin/runner-common.sh
-      V="/var/run/github-runner"
-      A="\\$V-last-activity"
-      J="\\$V-jobs"
-      H="\\$V-has-run-job"
-      [ ! -f "\\$A" ] && touch "\\$A"
-      L=\\$(stat -c %Y "\\$A" 2>/dev/null || echo 0)
-      N=\\$(date +%s)
-      I=\\$((N-L))
-      [ -f "\\$H" ] && G=\\${RUNNER_GRACE_PERIOD:-60} || G=\\${RUNNER_INITIAL_GRACE_PERIOD:-180}
-      R=\\$(grep -l '\"status\":\"running\"' \\$J/*.job 2>/dev/null | wc -l || echo 0)
-      if [ \\$R -eq 0 ] && [ \\$I -gt \\$G ]; then
-        log "TERMINATING: idle \\$I > grace \\$G"
+      source $B/runner-common.sh
+      A="$V-last-activity"
+      J="$V-jobs"
+      H="$V-has-run-job"
+      [ ! -f "\$A" ] && touch "\$A"
+      L=\$(stat -c %Y "\$A" 2>/dev/null || echo 0)
+      N=\$(date +%s)
+      I=\$((N-L))
+      [ -f "\$H" ] && G=\${RUNNER_GRACE_PERIOD:-60} || G=\${RUNNER_INITIAL_GRACE_PERIOD:-180}
+      R=\$(grep -l '"status":"running"' \$J/*.job 2>/dev/null | wc -l || echo 0)
+      if [ \$R -eq 0 ] && [ \$I -gt \$G ]; then
+        log "TERMINATING: idle \$I > grace \$G"
         deregister_all_runners
         flush_cloudwatch_logs
         debug_sleep_and_shutdown
       else
-        [ \\$R -gt 0 ] && log "\\$R job(s) running" || log "Idle \\$I/\\$G sec"
+        [ \$R -gt 0 ] && log "\$R job(s) running" || log "Idle \$I/\$G sec"
       fi
       EOFT
       
-      chmod +x /usr/local/bin/job-started-hook.sh /usr/local/bin/job-completed-hook.sh /usr/local/bin/check-runner-termination.sh
+      chmod +x $B/job-started-hook.sh $B/job-completed-hook.sh $B/check-runner-termination.sh
       
-      V="/var/run/github-runner"
       mkdir -p $V-jobs
       touch $V-last-activity
       
@@ -400,7 +427,7 @@
       Type=oneshot
       Environment="RUNNER_GRACE_PERIOD=61"
       Environment="RUNNER_INITIAL_GRACE_PERIOD=181"
-      ExecStart=/usr/local/bin/check-runner-termination.sh
+      ExecStart=$B/check-runner-termination.sh
       EOF
       
       cat > /etc/systemd/system/runner-termination-check.timer << EOF
@@ -452,6 +479,7 @@
           continue
         fi
         (
+          trap 'echo "Subshell error on line $LINENO" >&2; exit 1' ERR
           configure_runner $i "$token" "${label}$METADATA_LABELS" "$homedir" "omsf-eco-infra/awsinfratesting" "$INSTANCE_ID" "61" "181"
           echo $? > /tmp/runner-$i-status
         ) &
@@ -461,6 +489,7 @@
       
       log "Waiting for all runner configurations to complete..."
       failed=0
+      succeeded=0
       for i in ${!pids[@]}; do
         wait ${pids[$i]}
         if [ -f /tmp/runner-$i-status ]; then
@@ -468,29 +497,38 @@
           rm -f /tmp/runner-$i-status
           if [ "$status" != "0" ]; then
             log_error "Runner $i configuration failed"
-            failed=1
+            failed=$((failed + 1))
+          else
+            succeeded=$((succeeded + 1))
           fi
         fi
       done
       
-      if [ $failed -ne 0 ]; then
-        terminate_instance "One or more runners failed to register"
+      if [ $succeeded -eq 0 ] && [ $failed -gt 0 ]; then
+        terminate_instance "All runners failed to register"
+      elif [ $failed -gt 0 ]; then
+        log "WARNING: $failed runner(s) failed, but $succeeded succeeded. Continuing with partial capacity."
       fi
       
-      log "All runners registered and started"
-      touch /var/run/github-runner-registered
+      if [ $succeeded -gt 0 ]; then
+        log "$succeeded runner(s) registered and started successfully"
+        touch $V-registered
+      else
+        log_error "No runners registered successfully"
+      fi
       
-      if [ -f /var/run/github-runner-watchdog.pid ]; then
-        WATCHDOG_PID=$(cat /var/run/github-runner-watchdog.pid)
+      if [ -f $V-watchdog.pid ]; then
+        WATCHDOG_PID=$(cat $V-watchdog.pid)
         kill $WATCHDOG_PID 2>/dev/null || true
-        rm -f /var/run/github-runner-watchdog.pid
+        rm -f $V-watchdog.pid
       fi
       
-      touch /var/run/github-runner-started
+      touch $V-started
       chmod o+x $homedir
       for RUNNER_DIR in $homedir/runner-*; do
         [ -d "$RUNNER_DIR/_diag" ] && chmod 755 "$RUNNER_DIR/_diag"
       done
+  
     ''',
   })
 # ---
@@ -550,7 +588,7 @@
             break
           fi
         done
-        
+      
         if [ -z "$homedir" ] || [ "$homedir" = "AUTO" ]; then
           homedir=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 && $6 ~ /^\\/home\\// {print $6}' | while read dir; do
             if [ -d "$dir" ]; then
@@ -571,11 +609,17 @@
       fi
       export homedir
       
-      cat > /usr/local/bin/runner-common.sh << EOSF
+      B=/usr/local/bin
+      V=/var/run/github-runner
+      
+      cat > $B/runner-common.sh << EOSF
       homedir="$homedir"
       debug="$debug"
       export homedir debug
       
+      EOSF
+      
+      cat >> $B/runner-common.sh << 'EOSF'
       
       log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/runner-setup.log; }
       log_error() { log "ERROR: $1" >&2; }
@@ -629,7 +673,7 @@
       
       debug_sleep_and_shutdown() {
         if [ "$debug" = "true" ] || [ "$debug" = "True" ] || [ "$debug" = "1" ]; then
-          log "Debug mode: Sleeping for 600 seconds before shutdown to allow debugging..."
+          log "Debug: Sleeping 600s before shutdown..."
           local ssh_user=$(basename "$homedir" 2>/dev/null || echo "ec2-user")
           local public_ip=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
           log "SSH into instance with: ssh ${ssh_user}@${public_ip}"
@@ -682,8 +726,24 @@
         tar -xzf /tmp/runner.tar.gz
       
         if [ -f ./bin/installdependencies.sh ]; then
-          log "Installing runner dependencies..."
-          sudo ./bin/installdependencies.sh >/dev/null 2>&1 || log "Warning: Some dependencies may have failed to install"
+          log "Installing dependencies..."
+          set +e
+          sudo ./bin/installdependencies.sh >/dev/null 2>&1
+          local deps_result=$?
+          set -e
+      
+          if [ $deps_result -ne 0 ]; then
+            log "Dependencies script failed, installing required packages manually..."
+            if command -v dnf >/dev/null 2>&1; then
+              sudo dnf install -y libicu lttng-ust >/dev/null 2>&1 || true
+            elif command -v yum >/dev/null 2>&1; then
+              sudo yum install -y libicu >/dev/null 2>&1 || true
+            elif command -v apt-get >/dev/null 2>&1; then
+              wait_for_dpkg_lock
+              sudo apt-get update >/dev/null 2>&1 || true
+              sudo apt-get install -y libicu-dev >/dev/null 2>&1 || true
+            fi
+          fi
         fi
       
         echo "$token" > .runner-token
@@ -714,12 +774,14 @@
         return 0
       }
       EOSF
-      chmod +x /usr/local/bin/runner-common.sh
-      source /usr/local/bin/runner-common.sh
+      
+      chmod +x $B/runner-common.sh
+      source $B/runner-common.sh
       
       logger "EC2-GHA: Starting userdata script"
       trap 'logger "EC2-GHA: Script failed at line $LINENO with exit code $?"' ERR
       trap 'terminate_instance "Setup script failed with error on line $LINENO"' ERR
+      trap 'if [ -f $V-watchdog-terminate ]; then terminate_instance "No runners registered within timeout"; else terminate_instance "Script terminated"; fi' TERM
       
       REGISTRATION_TIMEOUT="300"
       if ! [[ "$REGISTRATION_TIMEOUT" =~ ^[0-9]+$ ]]; then
@@ -727,19 +789,22 @@
         REGISTRATION_TIMEOUT=300
       fi
       logger "EC2-GHA: Registration timeout set to $REGISTRATION_TIMEOUT seconds"
+      touch $V-watchdog-active
       (
         log "Watchdog: Starting $REGISTRATION_TIMEOUT second timeout"
         sleep $REGISTRATION_TIMEOUT
-        if [ ! -f /var/run/github-runner-registered ]; then
+        if [ ! -f $V-registered ]; then
           log "Watchdog: Registration marker not found after timeout"
-          terminate_instance "Runner failed to register within $REGISTRATION_TIMEOUT seconds"
+          touch $V-watchdog-terminate
+          kill -TERM $$ 2>/dev/null || true
         else
           log "Watchdog: Registration marker found, exiting normally"
         fi
+        rm -f $V-watchdog-active
       ) &
       REGISTRATION_WATCHDOG_PID=$!
       log "Watchdog PID: $REGISTRATION_WATCHDOG_PID"
-      echo $REGISTRATION_WATCHDOG_PID > /var/run/github-runner-watchdog.pid
+      echo $REGISTRATION_WATCHDOG_PID > $V-watchdog.pid
       
       
       
@@ -773,16 +838,20 @@
           else
             log "WARNING: Unable to detect package manager, skipping CloudWatch agent installation"
           fi
+          P='"file_path":'
+          G=',"log_group_name":"","log_stream_name":"{instance_id}/'
+          Z='","timezone":"UTC"}'
+          H="$homedir"
           cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
       {"agent":{"run_as_user":"cwagent"},"logs":{"logs_collected":{"files":{"collect_list":[
-      {"file_path":"/var/log/runner-setup.log","log_group_name":"","log_stream_name":"{instance_id}/runner-setup","timezone":"UTC"},
-      {"file_path":"/var/log/runner-debug.log","log_group_name":"","log_stream_name":"{instance_id}/runner-debug","timezone":"UTC"},
-      {"file_path":"/tmp/job-started-hook.log","log_group_name":"","log_stream_name":"{instance_id}/job-started","timezone":"UTC"},
-      {"file_path":"/tmp/job-completed-hook.log","log_group_name":"","log_stream_name":"{instance_id}/job-completed","timezone":"UTC"},
-      {"file_path":"/tmp/termination-check.log","log_group_name":"","log_stream_name":"{instance_id}/termination","timezone":"UTC"},
-      {"file_path":"/tmp/runner-*-config.log","log_group_name":"","log_stream_name":"{instance_id}/runner-config","timezone":"UTC"},
-      {"file_path":"/home/ec2-user/_diag/Runner_**.log","log_group_name":"","log_stream_name":"{instance_id}/runner-diag","timezone":"UTC"},
-      {"file_path":"/home/ec2-user/_diag/Worker_**.log","log_group_name":"","log_stream_name":"{instance_id}/worker-diag","timezone":"UTC"}
+      {$P"/var/log/runner-setup.log"${G}runner-setup$Z,
+      {$P"/var/log/runner-debug.log"${G}runner-debug$Z,
+      {$P"/tmp/job-started-hook.log"${G}job-started$Z,
+      {$P"/tmp/job-completed-hook.log"${G}job-completed$Z,
+      {$P"/tmp/termination-check.log"${G}termination$Z,
+      {$P"/tmp/runner-*-config.log"${G}runner-config$Z,
+      {$P"$H/_diag/Runner_**.log"${G}runner-diag$Z,
+      {$P"$H/_diag/Worker_**.log"${G}worker-diag$Z
       ]}}}}
       EOF
           /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
@@ -832,54 +901,50 @@
       fi
       log "Downloaded runner binary"
       
-      cat > /usr/local/bin/job-started-hook.sh << 'EOFS'
+      cat > $B/job-started-hook.sh << EOFS
       #!/bin/bash
       exec >> /tmp/job-started-hook.log 2>&1
-      V="/var/run/github-runner"
-      RUNNER_IDX="${RUNNER_INDEX:-0}"
-      echo "[$(date)] Runner-$RUNNER_IDX: Job started: ${GITHUB_JOB}"
+      I="\${RUNNER_INDEX:-0}"
+      echo "[\$(date)] Runner-\$I: Job started: \${GITHUB_JOB}"
       mkdir -p $V-jobs
-      echo '{\"status\":\"running\",\"runner\":\"'$RUNNER_IDX'\"}' > $V-jobs/${GITHUB_RUN_ID}-${GITHUB_JOB}-$RUNNER_IDX.job
+      echo '{"status":"running","runner":"'\$I'"}' > $V-jobs/\${GITHUB_RUN_ID}-\${GITHUB_JOB}-\$I.job
       touch $V-last-activity $V-has-run-job
       EOFS
       
-      cat > /usr/local/bin/job-completed-hook.sh << 'EOFC'
+      cat > $B/job-completed-hook.sh << EOFC
       #!/bin/bash
       exec >> /tmp/job-completed-hook.log 2>&1
-      V="/var/run/github-runner"
-      RUNNER_IDX="${RUNNER_INDEX:-0}"
-      echo "[$(date)] Runner-$RUNNER_IDX: Job completed: ${GITHUB_JOB}"
-      rm -f $V-jobs/${GITHUB_RUN_ID}-${GITHUB_JOB}-$RUNNER_IDX.job
+      I="\${RUNNER_INDEX:-0}"
+      echo "[\$(date)] Runner-\$I: Job completed: \${GITHUB_JOB}"
+      rm -f $V-jobs/\${GITHUB_RUN_ID}-\${GITHUB_JOB}-\$I.job
       touch $V-last-activity
       EOFC
       
-      cat > /usr/local/bin/check-runner-termination.sh << EOFT
+      cat > $B/check-runner-termination.sh << EOFT
       #!/bin/bash
       exec >> /tmp/termination-check.log 2>&1
-      source /usr/local/bin/runner-common.sh
-      V="/var/run/github-runner"
-      A="\\$V-last-activity"
-      J="\\$V-jobs"
-      H="\\$V-has-run-job"
-      [ ! -f "\\$A" ] && touch "\\$A"
-      L=\\$(stat -c %Y "\\$A" 2>/dev/null || echo 0)
-      N=\\$(date +%s)
-      I=\\$((N-L))
-      [ -f "\\$H" ] && G=\\${RUNNER_GRACE_PERIOD:-60} || G=\\${RUNNER_INITIAL_GRACE_PERIOD:-180}
-      R=\\$(grep -l '\"status\":\"running\"' \\$J/*.job 2>/dev/null | wc -l || echo 0)
-      if [ \\$R -eq 0 ] && [ \\$I -gt \\$G ]; then
-        log "TERMINATING: idle \\$I > grace \\$G"
+      source $B/runner-common.sh
+      A="$V-last-activity"
+      J="$V-jobs"
+      H="$V-has-run-job"
+      [ ! -f "\$A" ] && touch "\$A"
+      L=\$(stat -c %Y "\$A" 2>/dev/null || echo 0)
+      N=\$(date +%s)
+      I=\$((N-L))
+      [ -f "\$H" ] && G=\${RUNNER_GRACE_PERIOD:-60} || G=\${RUNNER_INITIAL_GRACE_PERIOD:-180}
+      R=\$(grep -l '"status":"running"' \$J/*.job 2>/dev/null | wc -l || echo 0)
+      if [ \$R -eq 0 ] && [ \$I -gt \$G ]; then
+        log "TERMINATING: idle \$I > grace \$G"
         deregister_all_runners
         flush_cloudwatch_logs
         debug_sleep_and_shutdown
       else
-        [ \\$R -gt 0 ] && log "\\$R job(s) running" || log "Idle \\$I/\\$G sec"
+        [ \$R -gt 0 ] && log "\$R job(s) running" || log "Idle \$I/\$G sec"
       fi
       EOFT
       
-      chmod +x /usr/local/bin/job-started-hook.sh /usr/local/bin/job-completed-hook.sh /usr/local/bin/check-runner-termination.sh
+      chmod +x $B/job-started-hook.sh $B/job-completed-hook.sh $B/check-runner-termination.sh
       
-      V="/var/run/github-runner"
       mkdir -p $V-jobs
       touch $V-last-activity
       
@@ -891,7 +956,7 @@
       Type=oneshot
       Environment="RUNNER_GRACE_PERIOD=61"
       Environment="RUNNER_INITIAL_GRACE_PERIOD=181"
-      ExecStart=/usr/local/bin/check-runner-termination.sh
+      ExecStart=$B/check-runner-termination.sh
       EOF
       
       cat > /etc/systemd/system/runner-termination-check.timer << EOF
@@ -943,6 +1008,7 @@
           continue
         fi
         (
+          trap 'echo "Subshell error on line $LINENO" >&2; exit 1' ERR
           configure_runner $i "$token" "${label}$METADATA_LABELS" "$homedir" "omsf-eco-infra/awsinfratesting" "$INSTANCE_ID" "61" "181"
           echo $? > /tmp/runner-$i-status
         ) &
@@ -952,6 +1018,7 @@
       
       log "Waiting for all runner configurations to complete..."
       failed=0
+      succeeded=0
       for i in ${!pids[@]}; do
         wait ${pids[$i]}
         if [ -f /tmp/runner-$i-status ]; then
@@ -959,29 +1026,38 @@
           rm -f /tmp/runner-$i-status
           if [ "$status" != "0" ]; then
             log_error "Runner $i configuration failed"
-            failed=1
+            failed=$((failed + 1))
+          else
+            succeeded=$((succeeded + 1))
           fi
         fi
       done
       
-      if [ $failed -ne 0 ]; then
-        terminate_instance "One or more runners failed to register"
+      if [ $succeeded -eq 0 ] && [ $failed -gt 0 ]; then
+        terminate_instance "All runners failed to register"
+      elif [ $failed -gt 0 ]; then
+        log "WARNING: $failed runner(s) failed, but $succeeded succeeded. Continuing with partial capacity."
       fi
       
-      log "All runners registered and started"
-      touch /var/run/github-runner-registered
+      if [ $succeeded -gt 0 ]; then
+        log "$succeeded runner(s) registered and started successfully"
+        touch $V-registered
+      else
+        log_error "No runners registered successfully"
+      fi
       
-      if [ -f /var/run/github-runner-watchdog.pid ]; then
-        WATCHDOG_PID=$(cat /var/run/github-runner-watchdog.pid)
+      if [ -f $V-watchdog.pid ]; then
+        WATCHDOG_PID=$(cat $V-watchdog.pid)
         kill $WATCHDOG_PID 2>/dev/null || true
-        rm -f /var/run/github-runner-watchdog.pid
+        rm -f $V-watchdog.pid
       fi
       
-      touch /var/run/github-runner-started
+      touch $V-started
       chmod o+x $homedir
       for RUNNER_DIR in $homedir/runner-*; do
         [ -d "$RUNNER_DIR/_diag" ] && chmod 755 "$RUNNER_DIR/_diag"
       done
+  
     ''',
   })
 # ---
@@ -1005,7 +1081,7 @@
         break
       fi
     done
-    
+  
     if [ -z "$homedir" ] || [ "$homedir" = "AUTO" ]; then
       homedir=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 && $6 ~ /^\\/home\\// {print $6}' | while read dir; do
         if [ -d "$dir" ]; then
@@ -1026,11 +1102,17 @@
   fi
   export homedir
   
-  cat > /usr/local/bin/runner-common.sh << EOSF
+  B=/usr/local/bin
+  V=/var/run/github-runner
+  
+  cat > $B/runner-common.sh << EOSF
   homedir="$homedir"
   debug="$debug"
   export homedir debug
   
+  EOSF
+  
+  cat >> $B/runner-common.sh << 'EOSF'
   
   log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/runner-setup.log; }
   log_error() { log "ERROR: $1" >&2; }
@@ -1084,7 +1166,7 @@
   
   debug_sleep_and_shutdown() {
     if [ "$debug" = "true" ] || [ "$debug" = "True" ] || [ "$debug" = "1" ]; then
-      log "Debug mode: Sleeping for 600 seconds before shutdown to allow debugging..."
+      log "Debug: Sleeping 600s before shutdown..."
       local ssh_user=$(basename "$homedir" 2>/dev/null || echo "ec2-user")
       local public_ip=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
       log "SSH into instance with: ssh ${ssh_user}@${public_ip}"
@@ -1137,8 +1219,24 @@
     tar -xzf /tmp/runner.tar.gz
   
     if [ -f ./bin/installdependencies.sh ]; then
-      log "Installing runner dependencies..."
-      sudo ./bin/installdependencies.sh >/dev/null 2>&1 || log "Warning: Some dependencies may have failed to install"
+      log "Installing dependencies..."
+      set +e
+      sudo ./bin/installdependencies.sh >/dev/null 2>&1
+      local deps_result=$?
+      set -e
+  
+      if [ $deps_result -ne 0 ]; then
+        log "Dependencies script failed, installing required packages manually..."
+        if command -v dnf >/dev/null 2>&1; then
+          sudo dnf install -y libicu lttng-ust >/dev/null 2>&1 || true
+        elif command -v yum >/dev/null 2>&1; then
+          sudo yum install -y libicu >/dev/null 2>&1 || true
+        elif command -v apt-get >/dev/null 2>&1; then
+          wait_for_dpkg_lock
+          sudo apt-get update >/dev/null 2>&1 || true
+          sudo apt-get install -y libicu-dev >/dev/null 2>&1 || true
+        fi
+      fi
     fi
   
     echo "$token" > .runner-token
@@ -1169,12 +1267,14 @@
     return 0
   }
   EOSF
-  chmod +x /usr/local/bin/runner-common.sh
-  source /usr/local/bin/runner-common.sh
+  
+  chmod +x $B/runner-common.sh
+  source $B/runner-common.sh
   
   logger "EC2-GHA: Starting userdata script"
   trap 'logger "EC2-GHA: Script failed at line $LINENO with exit code $?"' ERR
   trap 'terminate_instance "Setup script failed with error on line $LINENO"' ERR
+  trap 'if [ -f $V-watchdog-terminate ]; then terminate_instance "No runners registered within timeout"; else terminate_instance "Script terminated"; fi' TERM
   
   REGISTRATION_TIMEOUT="300"
   if ! [[ "$REGISTRATION_TIMEOUT" =~ ^[0-9]+$ ]]; then
@@ -1182,19 +1282,22 @@
     REGISTRATION_TIMEOUT=300
   fi
   logger "EC2-GHA: Registration timeout set to $REGISTRATION_TIMEOUT seconds"
+  touch $V-watchdog-active
   (
     log "Watchdog: Starting $REGISTRATION_TIMEOUT second timeout"
     sleep $REGISTRATION_TIMEOUT
-    if [ ! -f /var/run/github-runner-registered ]; then
+    if [ ! -f $V-registered ]; then
       log "Watchdog: Registration marker not found after timeout"
-      terminate_instance "Runner failed to register within $REGISTRATION_TIMEOUT seconds"
+      touch $V-watchdog-terminate
+      kill -TERM $$ 2>/dev/null || true
     else
       log "Watchdog: Registration marker found, exiting normally"
     fi
+    rm -f $V-watchdog-active
   ) &
   REGISTRATION_WATCHDOG_PID=$!
   log "Watchdog PID: $REGISTRATION_WATCHDOG_PID"
-  echo $REGISTRATION_WATCHDOG_PID > /var/run/github-runner-watchdog.pid
+  echo $REGISTRATION_WATCHDOG_PID > $V-watchdog.pid
   
   
   
@@ -1228,16 +1331,20 @@
       else
         log "WARNING: Unable to detect package manager, skipping CloudWatch agent installation"
       fi
+      P='"file_path":'
+      G=',"log_group_name":"","log_stream_name":"{instance_id}/'
+      Z='","timezone":"UTC"}'
+      H="$homedir"
       cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
   {"agent":{"run_as_user":"cwagent"},"logs":{"logs_collected":{"files":{"collect_list":[
-  {"file_path":"/var/log/runner-setup.log","log_group_name":"","log_stream_name":"{instance_id}/runner-setup","timezone":"UTC"},
-  {"file_path":"/var/log/runner-debug.log","log_group_name":"","log_stream_name":"{instance_id}/runner-debug","timezone":"UTC"},
-  {"file_path":"/tmp/job-started-hook.log","log_group_name":"","log_stream_name":"{instance_id}/job-started","timezone":"UTC"},
-  {"file_path":"/tmp/job-completed-hook.log","log_group_name":"","log_stream_name":"{instance_id}/job-completed","timezone":"UTC"},
-  {"file_path":"/tmp/termination-check.log","log_group_name":"","log_stream_name":"{instance_id}/termination","timezone":"UTC"},
-  {"file_path":"/tmp/runner-*-config.log","log_group_name":"","log_stream_name":"{instance_id}/runner-config","timezone":"UTC"},
-  {"file_path":"/home/ec2-user/_diag/Runner_**.log","log_group_name":"","log_stream_name":"{instance_id}/runner-diag","timezone":"UTC"},
-  {"file_path":"/home/ec2-user/_diag/Worker_**.log","log_group_name":"","log_stream_name":"{instance_id}/worker-diag","timezone":"UTC"}
+  {$P"/var/log/runner-setup.log"${G}runner-setup$Z,
+  {$P"/var/log/runner-debug.log"${G}runner-debug$Z,
+  {$P"/tmp/job-started-hook.log"${G}job-started$Z,
+  {$P"/tmp/job-completed-hook.log"${G}job-completed$Z,
+  {$P"/tmp/termination-check.log"${G}termination$Z,
+  {$P"/tmp/runner-*-config.log"${G}runner-config$Z,
+  {$P"$H/_diag/Runner_**.log"${G}runner-diag$Z,
+  {$P"$H/_diag/Worker_**.log"${G}worker-diag$Z
   ]}}}}
   EOF
       /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
@@ -1287,54 +1394,50 @@
   fi
   log "Downloaded runner binary"
   
-  cat > /usr/local/bin/job-started-hook.sh << 'EOFS'
+  cat > $B/job-started-hook.sh << EOFS
   #!/bin/bash
   exec >> /tmp/job-started-hook.log 2>&1
-  V="/var/run/github-runner"
-  RUNNER_IDX="${RUNNER_INDEX:-0}"
-  echo "[$(date)] Runner-$RUNNER_IDX: Job started: ${GITHUB_JOB}"
+  I="\${RUNNER_INDEX:-0}"
+  echo "[\$(date)] Runner-\$I: Job started: \${GITHUB_JOB}"
   mkdir -p $V-jobs
-  echo '{\"status\":\"running\",\"runner\":\"'$RUNNER_IDX'\"}' > $V-jobs/${GITHUB_RUN_ID}-${GITHUB_JOB}-$RUNNER_IDX.job
+  echo '{"status":"running","runner":"'\$I'"}' > $V-jobs/\${GITHUB_RUN_ID}-\${GITHUB_JOB}-\$I.job
   touch $V-last-activity $V-has-run-job
   EOFS
   
-  cat > /usr/local/bin/job-completed-hook.sh << 'EOFC'
+  cat > $B/job-completed-hook.sh << EOFC
   #!/bin/bash
   exec >> /tmp/job-completed-hook.log 2>&1
-  V="/var/run/github-runner"
-  RUNNER_IDX="${RUNNER_INDEX:-0}"
-  echo "[$(date)] Runner-$RUNNER_IDX: Job completed: ${GITHUB_JOB}"
-  rm -f $V-jobs/${GITHUB_RUN_ID}-${GITHUB_JOB}-$RUNNER_IDX.job
+  I="\${RUNNER_INDEX:-0}"
+  echo "[\$(date)] Runner-\$I: Job completed: \${GITHUB_JOB}"
+  rm -f $V-jobs/\${GITHUB_RUN_ID}-\${GITHUB_JOB}-\$I.job
   touch $V-last-activity
   EOFC
   
-  cat > /usr/local/bin/check-runner-termination.sh << EOFT
+  cat > $B/check-runner-termination.sh << EOFT
   #!/bin/bash
   exec >> /tmp/termination-check.log 2>&1
-  source /usr/local/bin/runner-common.sh
-  V="/var/run/github-runner"
-  A="\\$V-last-activity"
-  J="\\$V-jobs"
-  H="\\$V-has-run-job"
-  [ ! -f "\\$A" ] && touch "\\$A"
-  L=\\$(stat -c %Y "\\$A" 2>/dev/null || echo 0)
-  N=\\$(date +%s)
-  I=\\$((N-L))
-  [ -f "\\$H" ] && G=\\${RUNNER_GRACE_PERIOD:-60} || G=\\${RUNNER_INITIAL_GRACE_PERIOD:-180}
-  R=\\$(grep -l '\"status\":\"running\"' \\$J/*.job 2>/dev/null | wc -l || echo 0)
-  if [ \\$R -eq 0 ] && [ \\$I -gt \\$G ]; then
-    log "TERMINATING: idle \\$I > grace \\$G"
+  source $B/runner-common.sh
+  A="$V-last-activity"
+  J="$V-jobs"
+  H="$V-has-run-job"
+  [ ! -f "\$A" ] && touch "\$A"
+  L=\$(stat -c %Y "\$A" 2>/dev/null || echo 0)
+  N=\$(date +%s)
+  I=\$((N-L))
+  [ -f "\$H" ] && G=\${RUNNER_GRACE_PERIOD:-60} || G=\${RUNNER_INITIAL_GRACE_PERIOD:-180}
+  R=\$(grep -l '"status":"running"' \$J/*.job 2>/dev/null | wc -l || echo 0)
+  if [ \$R -eq 0 ] && [ \$I -gt \$G ]; then
+    log "TERMINATING: idle \$I > grace \$G"
     deregister_all_runners
     flush_cloudwatch_logs
     debug_sleep_and_shutdown
   else
-    [ \\$R -gt 0 ] && log "\\$R job(s) running" || log "Idle \\$I/\\$G sec"
+    [ \$R -gt 0 ] && log "\$R job(s) running" || log "Idle \$I/\$G sec"
   fi
   EOFT
   
-  chmod +x /usr/local/bin/job-started-hook.sh /usr/local/bin/job-completed-hook.sh /usr/local/bin/check-runner-termination.sh
+  chmod +x $B/job-started-hook.sh $B/job-completed-hook.sh $B/check-runner-termination.sh
   
-  V="/var/run/github-runner"
   mkdir -p $V-jobs
   touch $V-last-activity
   
@@ -1346,7 +1449,7 @@
   Type=oneshot
   Environment="RUNNER_GRACE_PERIOD=61"
   Environment="RUNNER_INITIAL_GRACE_PERIOD=181"
-  ExecStart=/usr/local/bin/check-runner-termination.sh
+  ExecStart=$B/check-runner-termination.sh
   EOF
   
   cat > /etc/systemd/system/runner-termination-check.timer << EOF
@@ -1398,6 +1501,7 @@
       continue
     fi
     (
+      trap 'echo "Subshell error on line $LINENO" >&2; exit 1' ERR
       configure_runner $i "$token" "${label}$METADATA_LABELS" "$homedir" "omsf-eco-infra/awsinfratesting" "$INSTANCE_ID" "61" "181"
       echo $? > /tmp/runner-$i-status
     ) &
@@ -1407,6 +1511,7 @@
   
   log "Waiting for all runner configurations to complete..."
   failed=0
+  succeeded=0
   for i in ${!pids[@]}; do
     wait ${pids[$i]}
     if [ -f /tmp/runner-$i-status ]; then
@@ -1414,29 +1519,38 @@
       rm -f /tmp/runner-$i-status
       if [ "$status" != "0" ]; then
         log_error "Runner $i configuration failed"
-        failed=1
+        failed=$((failed + 1))
+      else
+        succeeded=$((succeeded + 1))
       fi
     fi
   done
   
-  if [ $failed -ne 0 ]; then
-    terminate_instance "One or more runners failed to register"
+  if [ $succeeded -eq 0 ] && [ $failed -gt 0 ]; then
+    terminate_instance "All runners failed to register"
+  elif [ $failed -gt 0 ]; then
+    log "WARNING: $failed runner(s) failed, but $succeeded succeeded. Continuing with partial capacity."
   fi
   
-  log "All runners registered and started"
-  touch /var/run/github-runner-registered
+  if [ $succeeded -gt 0 ]; then
+    log "$succeeded runner(s) registered and started successfully"
+    touch $V-registered
+  else
+    log_error "No runners registered successfully"
+  fi
   
-  if [ -f /var/run/github-runner-watchdog.pid ]; then
-    WATCHDOG_PID=$(cat /var/run/github-runner-watchdog.pid)
+  if [ -f $V-watchdog.pid ]; then
+    WATCHDOG_PID=$(cat $V-watchdog.pid)
     kill $WATCHDOG_PID 2>/dev/null || true
-    rm -f /var/run/github-runner-watchdog.pid
+    rm -f $V-watchdog.pid
   fi
   
-  touch /var/run/github-runner-started
+  touch $V-started
   chmod o+x $homedir
   for RUNNER_DIR in $homedir/runner-*; do
     [ -d "$RUNNER_DIR/_diag" ] && chmod 755 "$RUNNER_DIR/_diag"
   done
+  
   '''
 # ---
 # name: test_build_user_data_with_cloudwatch
@@ -1459,7 +1573,7 @@
         break
       fi
     done
-    
+  
     if [ -z "$homedir" ] || [ "$homedir" = "AUTO" ]; then
       homedir=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 && $6 ~ /^\\/home\\// {print $6}' | while read dir; do
         if [ -d "$dir" ]; then
@@ -1480,11 +1594,17 @@
   fi
   export homedir
   
-  cat > /usr/local/bin/runner-common.sh << EOSF
+  B=/usr/local/bin
+  V=/var/run/github-runner
+  
+  cat > $B/runner-common.sh << EOSF
   homedir="$homedir"
   debug="$debug"
   export homedir debug
   
+  EOSF
+  
+  cat >> $B/runner-common.sh << 'EOSF'
   
   log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/runner-setup.log; }
   log_error() { log "ERROR: $1" >&2; }
@@ -1538,7 +1658,7 @@
   
   debug_sleep_and_shutdown() {
     if [ "$debug" = "true" ] || [ "$debug" = "True" ] || [ "$debug" = "1" ]; then
-      log "Debug mode: Sleeping for 600 seconds before shutdown to allow debugging..."
+      log "Debug: Sleeping 600s before shutdown..."
       local ssh_user=$(basename "$homedir" 2>/dev/null || echo "ec2-user")
       local public_ip=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
       log "SSH into instance with: ssh ${ssh_user}@${public_ip}"
@@ -1591,8 +1711,24 @@
     tar -xzf /tmp/runner.tar.gz
   
     if [ -f ./bin/installdependencies.sh ]; then
-      log "Installing runner dependencies..."
-      sudo ./bin/installdependencies.sh >/dev/null 2>&1 || log "Warning: Some dependencies may have failed to install"
+      log "Installing dependencies..."
+      set +e
+      sudo ./bin/installdependencies.sh >/dev/null 2>&1
+      local deps_result=$?
+      set -e
+  
+      if [ $deps_result -ne 0 ]; then
+        log "Dependencies script failed, installing required packages manually..."
+        if command -v dnf >/dev/null 2>&1; then
+          sudo dnf install -y libicu lttng-ust >/dev/null 2>&1 || true
+        elif command -v yum >/dev/null 2>&1; then
+          sudo yum install -y libicu >/dev/null 2>&1 || true
+        elif command -v apt-get >/dev/null 2>&1; then
+          wait_for_dpkg_lock
+          sudo apt-get update >/dev/null 2>&1 || true
+          sudo apt-get install -y libicu-dev >/dev/null 2>&1 || true
+        fi
+      fi
     fi
   
     echo "$token" > .runner-token
@@ -1623,12 +1759,14 @@
     return 0
   }
   EOSF
-  chmod +x /usr/local/bin/runner-common.sh
-  source /usr/local/bin/runner-common.sh
+  
+  chmod +x $B/runner-common.sh
+  source $B/runner-common.sh
   
   logger "EC2-GHA: Starting userdata script"
   trap 'logger "EC2-GHA: Script failed at line $LINENO with exit code $?"' ERR
   trap 'terminate_instance "Setup script failed with error on line $LINENO"' ERR
+  trap 'if [ -f $V-watchdog-terminate ]; then terminate_instance "No runners registered within timeout"; else terminate_instance "Script terminated"; fi' TERM
   
   REGISTRATION_TIMEOUT="300"
   if ! [[ "$REGISTRATION_TIMEOUT" =~ ^[0-9]+$ ]]; then
@@ -1636,19 +1774,22 @@
     REGISTRATION_TIMEOUT=300
   fi
   logger "EC2-GHA: Registration timeout set to $REGISTRATION_TIMEOUT seconds"
+  touch $V-watchdog-active
   (
     log "Watchdog: Starting $REGISTRATION_TIMEOUT second timeout"
     sleep $REGISTRATION_TIMEOUT
-    if [ ! -f /var/run/github-runner-registered ]; then
+    if [ ! -f $V-registered ]; then
       log "Watchdog: Registration marker not found after timeout"
-      terminate_instance "Runner failed to register within $REGISTRATION_TIMEOUT seconds"
+      touch $V-watchdog-terminate
+      kill -TERM $$ 2>/dev/null || true
     else
       log "Watchdog: Registration marker found, exiting normally"
     fi
+    rm -f $V-watchdog-active
   ) &
   REGISTRATION_WATCHDOG_PID=$!
   log "Watchdog PID: $REGISTRATION_WATCHDOG_PID"
-  echo $REGISTRATION_WATCHDOG_PID > /var/run/github-runner-watchdog.pid
+  echo $REGISTRATION_WATCHDOG_PID > $V-watchdog.pid
   
   
   
@@ -1682,16 +1823,20 @@
       else
         log "WARNING: Unable to detect package manager, skipping CloudWatch agent installation"
       fi
+      P='"file_path":'
+      G=',"log_group_name":"/aws/ec2/github-runners","log_stream_name":"{instance_id}/'
+      Z='","timezone":"UTC"}'
+      H="$homedir"
       cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
   {"agent":{"run_as_user":"cwagent"},"logs":{"logs_collected":{"files":{"collect_list":[
-  {"file_path":"/var/log/runner-setup.log","log_group_name":"/aws/ec2/github-runners","log_stream_name":"{instance_id}/runner-setup","timezone":"UTC"},
-  {"file_path":"/var/log/runner-debug.log","log_group_name":"/aws/ec2/github-runners","log_stream_name":"{instance_id}/runner-debug","timezone":"UTC"},
-  {"file_path":"/tmp/job-started-hook.log","log_group_name":"/aws/ec2/github-runners","log_stream_name":"{instance_id}/job-started","timezone":"UTC"},
-  {"file_path":"/tmp/job-completed-hook.log","log_group_name":"/aws/ec2/github-runners","log_stream_name":"{instance_id}/job-completed","timezone":"UTC"},
-  {"file_path":"/tmp/termination-check.log","log_group_name":"/aws/ec2/github-runners","log_stream_name":"{instance_id}/termination","timezone":"UTC"},
-  {"file_path":"/tmp/runner-*-config.log","log_group_name":"/aws/ec2/github-runners","log_stream_name":"{instance_id}/runner-config","timezone":"UTC"},
-  {"file_path":"/home/ec2-user/_diag/Runner_**.log","log_group_name":"/aws/ec2/github-runners","log_stream_name":"{instance_id}/runner-diag","timezone":"UTC"},
-  {"file_path":"/home/ec2-user/_diag/Worker_**.log","log_group_name":"/aws/ec2/github-runners","log_stream_name":"{instance_id}/worker-diag","timezone":"UTC"}
+  {$P"/var/log/runner-setup.log"${G}runner-setup$Z,
+  {$P"/var/log/runner-debug.log"${G}runner-debug$Z,
+  {$P"/tmp/job-started-hook.log"${G}job-started$Z,
+  {$P"/tmp/job-completed-hook.log"${G}job-completed$Z,
+  {$P"/tmp/termination-check.log"${G}termination$Z,
+  {$P"/tmp/runner-*-config.log"${G}runner-config$Z,
+  {$P"$H/_diag/Runner_**.log"${G}runner-diag$Z,
+  {$P"$H/_diag/Worker_**.log"${G}worker-diag$Z
   ]}}}}
   EOF
       /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
@@ -1741,54 +1886,50 @@
   fi
   log "Downloaded runner binary"
   
-  cat > /usr/local/bin/job-started-hook.sh << 'EOFS'
+  cat > $B/job-started-hook.sh << EOFS
   #!/bin/bash
   exec >> /tmp/job-started-hook.log 2>&1
-  V="/var/run/github-runner"
-  RUNNER_IDX="${RUNNER_INDEX:-0}"
-  echo "[$(date)] Runner-$RUNNER_IDX: Job started: ${GITHUB_JOB}"
+  I="\${RUNNER_INDEX:-0}"
+  echo "[\$(date)] Runner-\$I: Job started: \${GITHUB_JOB}"
   mkdir -p $V-jobs
-  echo '{\"status\":\"running\",\"runner\":\"'$RUNNER_IDX'\"}' > $V-jobs/${GITHUB_RUN_ID}-${GITHUB_JOB}-$RUNNER_IDX.job
+  echo '{"status":"running","runner":"'\$I'"}' > $V-jobs/\${GITHUB_RUN_ID}-\${GITHUB_JOB}-\$I.job
   touch $V-last-activity $V-has-run-job
   EOFS
   
-  cat > /usr/local/bin/job-completed-hook.sh << 'EOFC'
+  cat > $B/job-completed-hook.sh << EOFC
   #!/bin/bash
   exec >> /tmp/job-completed-hook.log 2>&1
-  V="/var/run/github-runner"
-  RUNNER_IDX="${RUNNER_INDEX:-0}"
-  echo "[$(date)] Runner-$RUNNER_IDX: Job completed: ${GITHUB_JOB}"
-  rm -f $V-jobs/${GITHUB_RUN_ID}-${GITHUB_JOB}-$RUNNER_IDX.job
+  I="\${RUNNER_INDEX:-0}"
+  echo "[\$(date)] Runner-\$I: Job completed: \${GITHUB_JOB}"
+  rm -f $V-jobs/\${GITHUB_RUN_ID}-\${GITHUB_JOB}-\$I.job
   touch $V-last-activity
   EOFC
   
-  cat > /usr/local/bin/check-runner-termination.sh << EOFT
+  cat > $B/check-runner-termination.sh << EOFT
   #!/bin/bash
   exec >> /tmp/termination-check.log 2>&1
-  source /usr/local/bin/runner-common.sh
-  V="/var/run/github-runner"
-  A="\\$V-last-activity"
-  J="\\$V-jobs"
-  H="\\$V-has-run-job"
-  [ ! -f "\\$A" ] && touch "\\$A"
-  L=\\$(stat -c %Y "\\$A" 2>/dev/null || echo 0)
-  N=\\$(date +%s)
-  I=\\$((N-L))
-  [ -f "\\$H" ] && G=\\${RUNNER_GRACE_PERIOD:-60} || G=\\${RUNNER_INITIAL_GRACE_PERIOD:-180}
-  R=\\$(grep -l '\"status\":\"running\"' \\$J/*.job 2>/dev/null | wc -l || echo 0)
-  if [ \\$R -eq 0 ] && [ \\$I -gt \\$G ]; then
-    log "TERMINATING: idle \\$I > grace \\$G"
+  source $B/runner-common.sh
+  A="$V-last-activity"
+  J="$V-jobs"
+  H="$V-has-run-job"
+  [ ! -f "\$A" ] && touch "\$A"
+  L=\$(stat -c %Y "\$A" 2>/dev/null || echo 0)
+  N=\$(date +%s)
+  I=\$((N-L))
+  [ -f "\$H" ] && G=\${RUNNER_GRACE_PERIOD:-60} || G=\${RUNNER_INITIAL_GRACE_PERIOD:-180}
+  R=\$(grep -l '"status":"running"' \$J/*.job 2>/dev/null | wc -l || echo 0)
+  if [ \$R -eq 0 ] && [ \$I -gt \$G ]; then
+    log "TERMINATING: idle \$I > grace \$G"
     deregister_all_runners
     flush_cloudwatch_logs
     debug_sleep_and_shutdown
   else
-    [ \\$R -gt 0 ] && log "\\$R job(s) running" || log "Idle \\$I/\\$G sec"
+    [ \$R -gt 0 ] && log "\$R job(s) running" || log "Idle \$I/\$G sec"
   fi
   EOFT
   
-  chmod +x /usr/local/bin/job-started-hook.sh /usr/local/bin/job-completed-hook.sh /usr/local/bin/check-runner-termination.sh
+  chmod +x $B/job-started-hook.sh $B/job-completed-hook.sh $B/check-runner-termination.sh
   
-  V="/var/run/github-runner"
   mkdir -p $V-jobs
   touch $V-last-activity
   
@@ -1800,7 +1941,7 @@
   Type=oneshot
   Environment="RUNNER_GRACE_PERIOD=61"
   Environment="RUNNER_INITIAL_GRACE_PERIOD=181"
-  ExecStart=/usr/local/bin/check-runner-termination.sh
+  ExecStart=$B/check-runner-termination.sh
   EOF
   
   cat > /etc/systemd/system/runner-termination-check.timer << EOF
@@ -1852,6 +1993,7 @@
       continue
     fi
     (
+      trap 'echo "Subshell error on line $LINENO" >&2; exit 1' ERR
       configure_runner $i "$token" "${label}$METADATA_LABELS" "$homedir" "omsf-eco-infra/awsinfratesting" "$INSTANCE_ID" "61" "181"
       echo $? > /tmp/runner-$i-status
     ) &
@@ -1861,6 +2003,7 @@
   
   log "Waiting for all runner configurations to complete..."
   failed=0
+  succeeded=0
   for i in ${!pids[@]}; do
     wait ${pids[$i]}
     if [ -f /tmp/runner-$i-status ]; then
@@ -1868,28 +2011,37 @@
       rm -f /tmp/runner-$i-status
       if [ "$status" != "0" ]; then
         log_error "Runner $i configuration failed"
-        failed=1
+        failed=$((failed + 1))
+      else
+        succeeded=$((succeeded + 1))
       fi
     fi
   done
   
-  if [ $failed -ne 0 ]; then
-    terminate_instance "One or more runners failed to register"
+  if [ $succeeded -eq 0 ] && [ $failed -gt 0 ]; then
+    terminate_instance "All runners failed to register"
+  elif [ $failed -gt 0 ]; then
+    log "WARNING: $failed runner(s) failed, but $succeeded succeeded. Continuing with partial capacity."
   fi
   
-  log "All runners registered and started"
-  touch /var/run/github-runner-registered
+  if [ $succeeded -gt 0 ]; then
+    log "$succeeded runner(s) registered and started successfully"
+    touch $V-registered
+  else
+    log_error "No runners registered successfully"
+  fi
   
-  if [ -f /var/run/github-runner-watchdog.pid ]; then
-    WATCHDOG_PID=$(cat /var/run/github-runner-watchdog.pid)
+  if [ -f $V-watchdog.pid ]; then
+    WATCHDOG_PID=$(cat $V-watchdog.pid)
     kill $WATCHDOG_PID 2>/dev/null || true
-    rm -f /var/run/github-runner-watchdog.pid
+    rm -f $V-watchdog.pid
   fi
   
-  touch /var/run/github-runner-started
+  touch $V-started
   chmod o+x $homedir
   for RUNNER_DIR in $homedir/runner-*; do
     [ -d "$RUNNER_DIR/_diag" ] && chmod 755 "$RUNNER_DIR/_diag"
   done
+  
   '''
 # ---
