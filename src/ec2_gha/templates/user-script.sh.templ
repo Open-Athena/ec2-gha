@@ -73,13 +73,20 @@ terminate_instance() {
 
   flush_cloudwatch_logs
 
-  # Give time for debugging
-  log "Sleeping for 300 seconds before shutdown to allow debugging..."
-  log "SSH into instance with: ssh ubuntu@$$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)"
-  log "Then check: /var/log/runner-setup.log and /var/log/runner-debug.log"
-  sleep 300
+  # Give time for debugging only in debug mode
+  if [ "$debug" = "true" ] || [ "$debug" = "True" ] || [ "$debug" = "1" ]; then
+    log "Debug mode: Sleeping for 600 seconds before shutdown to allow debugging..."
+    # Detect the SSH user from the home directory
+    local ssh_user=$$(basename "$$homedir" 2>/dev/null || echo "ec2-user")
+    local public_ip=$$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+    log "SSH into instance with: ssh $${ssh_user}@$${public_ip}"
+    log "Then check: /var/log/runner-setup.log and /var/log/runner-debug.log"
+    sleep 600
+    log "Debug period ended, shutting down"
+  else
+    log "Shutting down immediately (debug mode not enabled)"
+  fi
 
-  log "Shutting down after debug delay"
   shutdown -h now
   exit 1
 }
