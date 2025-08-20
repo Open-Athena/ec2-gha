@@ -94,6 +94,10 @@ on:
         description: "Maximum instance lifetime in minutes before automatic shutdown (falls back to vars.MAX_INSTANCE_LIFETIME, then 360 = 6 hours)"
         required: false
         type: string
+      name:
+        description: "Name for the launch job"
+        required: false
+        type: string
       runner_grace_period:
         description: "Grace period in seconds before terminating instance after last job completes (falls back to vars.RUNNER_GRACE_PERIOD, then 60)"
         required: false
@@ -135,7 +139,7 @@ permissions:
 
 jobs:
   launch:
-    name: Launch ${{ inputs.ec2_instance_type || vars.EC2_INSTANCE_TYPE }}
+    name: ${{ inputs.name || format('Launch {0}', inputs.ec2_instance_type || vars.EC2_INSTANCE_TYPE) }}
     runs-on: ubuntu-latest
     outputs:
       id: ${{ steps.aws-start.outputs.label }}
