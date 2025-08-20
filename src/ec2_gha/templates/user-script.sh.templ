@@ -439,6 +439,12 @@ configure_runner() {
   # Extract runner
   tar -xzf /tmp/runner.tar.gz
 
+  # Install dependencies if needed (for AL2023, Debian 13, etc.)
+  if [ -f ./bin/installdependencies.sh ]; then
+    log "Installing runner dependencies..."
+    sudo ./bin/installdependencies.sh >/dev/null 2>&1 || log "Warning: Some dependencies may have failed to install"
+  fi
+
   # Save token for deregistration
   echo "$$token" > .runner-token
 
