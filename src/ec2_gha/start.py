@@ -429,6 +429,34 @@ class StartAWS(CreateCloudInstance):
         else:
             waiter.wait(InstanceIds=ids)
 
+    def get_instance_details(self, ids: list[str]) -> dict[str, dict]:
+        """Get instance details including DNS names.
+
+        Parameters
+        ----------
+        ids : list[str]
+            A list of instance IDs to get details for.
+
+        Returns
+        -------
+        dict[str, dict]
+            A dictionary mapping instance IDs to their details.
+        """
+        ec2 = boto3.client("ec2", self.region_name)
+        response = ec2.describe_instances(InstanceIds=ids)
+
+        details = {}
+        for reservation in response['Reservations']:
+            for instance in reservation['Instances']:
+                details[instance['InstanceId']] = {
+                    'PublicDnsName': instance.get('PublicDnsName', ''),
+                    'PublicIpAddress': instance.get('PublicIpAddress', ''),
+                    'PrivateIpAddress': instance.get('PrivateIpAddress', ''),
+                    'InstanceType': instance.get('InstanceType', ''),
+                    'State': instance['State']['Name']
+                }
+        return details
+
     def set_instance_mapping(self, mapping: dict[str, str]):
         """Set the instance mapping.
 
