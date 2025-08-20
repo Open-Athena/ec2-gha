@@ -357,7 +357,14 @@ if [ \$$R -eq 0 ] && [ \$$I -gt \$$G ]; then
     fi
   done
   flush_cloudwatch_logs
-  log "Shutting down"
+  # In debug mode, give time for debugging before shutdown
+  if [ "$debug" = "true" ] || [ "$debug" = "True" ] || [ "$debug" = "1" ]; then
+    log "Debug mode: Sleeping 600 seconds before shutdown..."
+    sleep 600
+    log "Debug period ended, shutting down"
+  else
+    log "Shutting down"
+  fi
   sudo shutdown -h now
 else
   [ \$$R -gt 0 ] && log "\$$R job(s) running" || log "Idle \$$I/\$$G sec"
