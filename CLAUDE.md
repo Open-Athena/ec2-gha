@@ -12,7 +12,7 @@
 # Install test dependencies
 pip install '.[test]'
 
-# Run tests matching a pattern
+# Run tests matching a pattern. You don't need to do this very often though.
 cd tests/ && pytest -v -m 'not slow'
 
 # Update `syrupy` "snapshots", run tests to verify they pass with (possibly-updated) snapshot values. Just a wrapper for:
@@ -20,7 +20,7 @@ cd tests/ && pytest -v -m 'not slow'
 # pytest --snapshot-update -m 'not slow'
 # pytest -vvv -m 'not slow' .
 # ```
-# Can be used in conjunction with `git rebase -x`.
+# Can be used in conjunction with `git rebase -x`. I'll mostly do this manually when cleaning up commits.
 scripts/update-snapshots.sh
 ```
 
