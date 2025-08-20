@@ -508,7 +508,7 @@ class StartAWS(CreateCloudInstance):
                 github_labels.append(labels)
 
         output("mapping", json.dumps(mapping))
-        output("instances", json.dumps(github_labels))
+        output("runners", json.dumps(github_labels))
 
         # For single instance use, output simplified values
         if len(mapping) == 1 and self.runners_per_instance == 1:
