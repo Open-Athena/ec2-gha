@@ -71,13 +71,15 @@ permissions:
 
 jobs:
   launch:
-    name: Launch Debug Instance
+    name: Launch ${{ inputs.type }}
     uses: ./.github/workflows/runner.yml
     with:
+      name: '🚀'
       ec2_instance_type: ${{ inputs.type }}
       ec2_image_id: ${{ inputs.ami }}
       debug: ${{ inputs.debug }}
       instance_name: "debug/$name#$run_number"
+      # `workflow_dispatch has higher defaults for these; revert to original defaults for `workflow_call`
       runner_registration_timeout: ${{ inputs.registration_timeout || '300' }}
       runner_grace_period: ${{ inputs.grace_period || '60' }}
       runner_initial_grace_period: ${{ inputs.initial_grace_period || '120' }}
