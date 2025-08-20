@@ -1,0 +1,119 @@
+name: Demo – configurable instance for debugging
+on:
+  workflow_dispatch:
+    inputs:
+      type:
+        description: "EC2 instance type (e.g., t3.medium, t3.large)"
+        required: false
+        type: string
+        default: "t3.large"
+      ami:
+        description: "AMI ID to use"
+        required: false
+        type: string
+        default: "ami-0e86e20dae9224db8"  # Ubuntu 24.04 LTS x86_64 (us-east-1)
+      registration_timeout:
+        description: "Max seconds to wait for runner registration (default: 360)"
+        required: false
+        type: string
+        default: "360"
+      initial_grace_period:
+        description: "Grace period if no job starts (default: 180)"
+        required: false
+        type: string
+        default: "180"
+      grace_period:
+        description: "Grace period before termination after job (default: 60)"
+        required: false
+        type: string
+        default: "60"
+      max_instance_lifetime:
+        description: "Max instance lifetime in minutes (default: 360)"
+        required: false
+        type: string
+        default: "360"
+      sleep:
+        description: "Sleep duration in seconds"
+        required: false
+        type: string
+        default: "600"
+      debug:
+        description: "Enable debug mode (extends termination delay to 600s)"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  id-token: write  # Required for AWS OIDC authentication
+  contents: read   # Required for actions/checkout
+
+jobs:
+  launch:
+    name: Launch Debug Instance
+    uses: ./.github/workflows/runner.yml
+    with:
+      ec2_instance_type: ${{ inputs.type }}
+      ec2_image_id: ${{ inputs.ami }}
+      debug: ${{ inputs.debug }}
+      instance_name: "debug/$name#$run_number"
+      runner_registration_timeout: ${{ inputs.registration_timeout }}
+      runner_grace_period: ${{ inputs.grace_period }}
+      runner_initial_grace_period: ${{ inputs.initial_grace_period }}
+      max_instance_lifetime: ${{ inputs.max_instance_lifetime }}
+    secrets: inherit
+
+  test:
+    needs: launch
+    name: Test Job
+    runs-on: ${{ needs.launch.outputs.id }}
+    steps:
+      - name: Instance Info
+        run: |
+          echo "=== Instance Information ==="
+          echo "Hostname: $(hostname)"
+          echo "Instance ID: $(curl -s http://169.254.169.254/latest/meta-data/instance-id)"
+          echo "Instance type: $(curl -s http://169.254.169.254/latest/meta-data/instance-type)"
+          echo "Public IP: $(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)"
+          echo "Region: $(curl -s http://169.254.169.254/latest/meta-data/placement/region)"
+          echo "AMI ID: $(curl -s http://169.254.169.254/latest/meta-data/ami-id)"
+          echo ""
+          echo "=== System Details ==="
+          echo "OS: $(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)"
+          echo "Kernel: $(uname -r)"
+          echo "Architecture: $(uname -m)"
+          echo "CPU cores: $(nproc)"
+          echo "Memory: $(free -h | grep Mem | awk '{print $2}')"
+          echo "User: $(whoami)"
+          echo "Home: $HOME"
+
+      - name: Sleep Test
+        run: |
+          DURATION=${{ inputs.sleep }}
+          echo "Starting sleep at: $(date '+%Y-%m-%d %H:%M:%S.%3N')"
+          echo "Sleeping for ${DURATION} seconds..."
+          sleep $DURATION
+          echo "Finished at: $(date '+%Y-%m-%d %H:%M:%S.%3N')"
+
+      - name: Debug Info
+        run: |
+          echo "=== Runner Environment ==="
+          echo "Runner home: ${RUNNER_HOME:-not set}"
+          echo "Runner workspace: ${GITHUB_WORKSPACE:-not set}"
+          echo "Runner temp: ${RUNNER_TEMP:-not set}"
+          echo ""
+          echo "=== Timeout Settings ==="
+          echo "Debug mode: ${{ inputs.debug }}"
+          echo "Registration timeout: ${{ inputs.registration_timeout }}s"
+          echo "Grace period: ${{ inputs.grace_period }}s"
+          echo "Initial grace period: ${{ inputs.initial_grace_period }}s"
+          echo "Max lifetime: ${{ inputs.max_instance_lifetime }} minutes"
+          echo ""
+          echo "=== Important Logs ==="
+          echo "Setup log: /var/log/runner-setup.log"
+          echo "Debug log: /var/log/runner-debug.log"
+          if [ -f /tmp/runner-0-config.log ]; then
+            echo "Config log exists: /tmp/runner-0-config.log"
+            echo "Last 5 lines of config log:"
+            tail -5 /tmp/runner-0-config.log
+          fi
+

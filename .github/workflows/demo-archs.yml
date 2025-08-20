@@ -43,7 +43,7 @@ jobs:
     uses: ./.github/workflows/runner.yml
     with:
       ec2_instance_type: t3.large
-      ec2_image_id: ami-0b0012dad04fbe3d7  # Debian 13 x86_64 (us-east-1)
+      ec2_image_id: ami-05b50089e01b13194  # Debian 12 x86_64 (us-east-1)
       instance_name: "Debian-AMD64/$name#$run_number"
     secrets: inherit
 
@@ -52,7 +52,7 @@ jobs:
     uses: ./.github/workflows/runner.yml
     with:
       ec2_instance_type: t4g.large
-      ec2_image_id: ami-01b1eba85c1cd6a3d  # Debian 13 arm64 (us-east-1)
+      ec2_image_id: ami-0505441d7e1514742  # Debian 12 arm64 (us-east-1)
       instance_name: "Debian-ARM64/$name#$run_number"
     secrets: inherit
 
