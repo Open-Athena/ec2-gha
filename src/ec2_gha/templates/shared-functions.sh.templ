@@ -121,7 +121,24 @@ configure_runner() {
   # Install dependencies if needed (for AL2023, Debian 13, etc.)
   if [ -f ./bin/installdependencies.sh ]; then
     log "Installing runner dependencies..."
-    sudo ./bin/installdependencies.sh >/dev/null 2>&1 || log "Warning: Some dependencies may have failed to install"
+    # Try to install dependencies, but don't fail if the script has issues
+    # Some distros may have the dependencies pre-installed or named differently
+    if ! sudo ./bin/installdependencies.sh >/dev/null 2>&1; then
+      log "Warning: installdependencies.sh reported issues, checking for libicu manually..."
+      # Try to install libicu manually based on the distro
+      if command -v yum >/dev/null 2>&1; then
+        # Amazon Linux, RHEL, CentOS
+        sudo yum install -y libicu >/dev/null 2>&1 || true
+      elif command -v apt-get >/dev/null 2>&1; then
+        # Debian, Ubuntu
+        wait_for_dpkg_lock
+        sudo apt-get update >/dev/null 2>&1 || true
+        sudo apt-get install -y libicu-dev >/dev/null 2>&1 || true
+      elif command -v dnf >/dev/null 2>&1; then
+        # Fedora, newer RHEL
+        sudo dnf install -y libicu >/dev/null 2>&1 || true
+      fi
+    fi
   fi
 
   # Save token for deregistration
