@@ -42,10 +42,32 @@ on:
         required: false
         type: boolean
         default: true
+  workflow_call:  # Called by demo-cpu-sweep, more for the "minimal", less for the "dbg"
+    inputs:
+      type:
+        description: "EC2 instance type"
+        required: false
+        type: string
+        default: "t3.large"
+      ami:
+        description: "AMI ID to use"
+        required: false
+        type: string
+        default: "ami-0e86e20dae9224db8"  # Ubuntu 24.04 LTS x86_64 (us-east-1)
+      sleep:
+        description: "Sleep duration in seconds"
+        required: false
+        type: string
+        default: "10"
+      debug:
+        description: "Enable debug mode"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   id-token: write  # Required for AWS OIDC authentication
-  contents: read   # Required for actions/checkout
+  contents: read   # Required for actions/checkout; normally set by default, but must explicitly specify when defining a custom `permissions` block.
 
 jobs:
   launch:
@@ -56,10 +78,10 @@ jobs:
       ec2_image_id: ${{ inputs.ami }}
       debug: ${{ inputs.debug }}
       instance_name: "debug/$name#$run_number"
-      runner_registration_timeout: ${{ inputs.registration_timeout }}
-      runner_grace_period: ${{ inputs.grace_period }}
-      runner_initial_grace_period: ${{ inputs.initial_grace_period }}
-      max_instance_lifetime: ${{ inputs.max_instance_lifetime }}
+      runner_registration_timeout: ${{ inputs.registration_timeout || '300' }}
+      runner_grace_period: ${{ inputs.grace_period || '60' }}
+      runner_initial_grace_period: ${{ inputs.initial_grace_period || '120' }}
+      max_instance_lifetime: ${{ inputs.max_instance_lifetime || '60' }}
     secrets: inherit
 
   test:

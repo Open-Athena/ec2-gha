@@ -16,7 +16,7 @@ on:
 
 permissions:
   id-token: write  # Required for AWS OIDC authentication
-  contents: read   # Required for actions/checkout
+  contents: read   # Required for actions/checkout; normally set by default, but must explicitly specify when defining a custom `permissions` block.
 
 jobs:
   # Launch EC2 runners for each OS/architecture combination

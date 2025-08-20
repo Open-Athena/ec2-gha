@@ -16,8 +16,8 @@ on:
         default: 0
 
 permissions:
-  id-token: write
-  contents: read
+  id-token: write  # Required for AWS OIDC authentication
+  contents: read   # Required for actions/checkout; normally set by default, but must explicitly specify when defining a custom `permissions` block.
 
 jobs:
   ec2:
