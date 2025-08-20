@@ -21,7 +21,7 @@ permissions:
 jobs:
   # Launch EC2 runners for each OS/architecture combination
   ubuntu-amd64:
-    name: Launch Ubuntu AMD64
+    name: 🚀 Ubuntu AMD
     uses: ./.github/workflows/runner.yml
     with:
       ec2_instance_type: t3.medium
@@ -30,7 +30,7 @@ jobs:
     secrets: inherit
 
   ubuntu-arm64:
-    name: Launch Ubuntu ARM64
+    name: 🚀 Ubuntu ARM
     uses: ./.github/workflows/runner.yml
     with:
       ec2_instance_type: t4g.medium
@@ -39,7 +39,7 @@ jobs:
     secrets: inherit
 
   debian-amd64:
-    name: Launch Debian AMD64
+    name: 🚀 Debian AMD
     uses: ./.github/workflows/runner.yml
     with:
       ec2_instance_type: t3.large
@@ -48,7 +48,7 @@ jobs:
     secrets: inherit
 
   debian-arm64:
-    name: Launch Debian ARM64
+    name: 🚀 Debian ARM
     uses: ./.github/workflows/runner.yml
     with:
       ec2_instance_type: t4g.large
@@ -57,7 +57,7 @@ jobs:
     secrets: inherit
 
   al2023-amd64:
-    name: Launch AL2023 AMD64
+    name: 🚀 AL2023 AMD
     uses: ./.github/workflows/runner.yml
     with:
       ec2_instance_type: t3.small
@@ -66,7 +66,7 @@ jobs:
     secrets: inherit
 
   al2023-arm64:
-    name: Launch AL2023 ARM64
+    name: 🚀 AL2023 ARM
     uses: ./.github/workflows/runner.yml
     with:
       ec2_instance_type: t4g.small
@@ -77,7 +77,7 @@ jobs:
   # Run test jobs on the launched instances using a matrix
   test-matrix:
     needs: [ubuntu-amd64, ubuntu-arm64, debian-amd64, debian-arm64, al2023-amd64, al2023-arm64]
-    name: Test ${{ matrix.os }} ${{ matrix.arch }}
+    name: 🔬 ${{ matrix.os }} ${{ matrix.arch }}
     strategy:
       matrix:
         include:
@@ -135,17 +135,21 @@ jobs:
           cat /etc/os-release | head -5
           echo ""
           echo "=== AWS Instance Details ==="
-          echo "Instance ID: $(curl -s http://169.254.169.254/latest/meta-data/instance-id)"
-          echo "Instance type: $(curl -s http://169.254.169.254/latest/meta-data/instance-type)"
-          echo "Region: $(curl -s http://169.254.169.254/latest/meta-data/placement/region)"
-          echo "AZ: $(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)"
+          # Get IMDSv2 token for metadata access
+          TOKEN=$(curl -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" -s http://169.254.169.254/latest/api/token)
+          echo "Instance ID: $(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/meta-data/instance-id)"
+          echo "Instance type: $(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/meta-data/instance-type)"
+          echo "Region: $(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/meta-data/placement/region)"
+          echo "AZ: $(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/meta-data/placement/availability-zone)"
 
       - name: Verify OS and architecture
         run: |
           echo "=== Verification ==="
           ACTUAL_ARCH=$(uname -m)
           OS_NAME=$(grep '^NAME=' /etc/os-release | cut -d'"' -f2)
-          ACTUAL_INSTANCE_TYPE=$(curl -s http://169.254.169.254/latest/meta-data/instance-type)
+          # Get IMDSv2 token for metadata access
+          TOKEN=$(curl -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" -s http://169.254.169.254/latest/api/token)
+          ACTUAL_INSTANCE_TYPE=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/meta-data/instance-type)
 
           # Verify architecture
           if [[ "$ACTUAL_ARCH" == "${{ matrix.expected_arch }}" ]]; then
