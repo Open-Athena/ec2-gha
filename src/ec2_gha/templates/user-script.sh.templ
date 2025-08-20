@@ -89,7 +89,7 @@ touch $$V-watchdog-active
     log "Watchdog: Registration marker not found after timeout"
     # Signal main process to terminate instead of doing it directly
     touch $$V-watchdog-terminate
-    # Kill the main script process to trigger its ERR trap
+    # Kill the main script process to trigger its TERM trap
     kill -TERM $$$$ 2>/dev/null || true
   else
     log "Watchdog: Registration marker found, exiting normally"
@@ -211,25 +211,23 @@ log "Downloaded runner binary"
 
 # Create job tracking scripts - these are called by GitHub runner hooks
 # job-started-hook.sh is called when a job starts
-cat > $$B/job-started-hook.sh << 'EOFS'
+cat > $$B/job-started-hook.sh << EOFS
 #!/bin/bash
 exec >> /tmp/job-started-hook.log 2>&1
-V="/var/run/github-runner"
-RUNNER_IDX="$${RUNNER_INDEX:-0}"
-echo "[$$(date)] Runner-$$RUNNER_IDX: ${log_prefix_job_started} $${GITHUB_JOB}"
+I="\$${RUNNER_INDEX:-0}"
+echo "[\$$(date)] Runner-\$$I: ${log_prefix_job_started} \$${GITHUB_JOB}"
 mkdir -p $$V-jobs
-echo '{\"status\":\"running\",\"runner\":\"'$$RUNNER_IDX'\"}' > $$V-jobs/$${GITHUB_RUN_ID}-$${GITHUB_JOB}-$$RUNNER_IDX.job
+echo '{"status":"running","runner":"'\$$I'"}' > $$V-jobs/\$${GITHUB_RUN_ID}-\$${GITHUB_JOB}-\$$I.job
 touch $$V-last-activity $$V-has-run-job
 EOFS
 
 # job-completed-hook.sh is called when a job completes
-cat > $$B/job-completed-hook.sh << 'EOFC'
+cat > $$B/job-completed-hook.sh << EOFC
 #!/bin/bash
 exec >> /tmp/job-completed-hook.log 2>&1
-V="/var/run/github-runner"
-RUNNER_IDX="$${RUNNER_INDEX:-0}"
-echo "[$$(date)] Runner-$$RUNNER_IDX: ${log_prefix_job_completed} $${GITHUB_JOB}"
-rm -f $$V-jobs/$${GITHUB_RUN_ID}-$${GITHUB_JOB}-$$RUNNER_IDX.job
+I="\$${RUNNER_INDEX:-0}"
+echo "[\$$(date)] Runner-\$$I: ${log_prefix_job_completed} \$${GITHUB_JOB}"
+rm -f $$V-jobs/\$${GITHUB_RUN_ID}-\$${GITHUB_JOB}-\$$I.job
 touch $$V-last-activity
 EOFC
 
@@ -238,23 +236,22 @@ cat > $$B/check-runner-termination.sh << EOFT
 #!/bin/bash
 exec >> /tmp/termination-check.log 2>&1
 source $$B/runner-common.sh
-V="/var/run/github-runner"
-A="\\$$V-last-activity"
-J="\\$$V-jobs"
-H="\\$$V-has-run-job"
-[ ! -f "\\$$A" ] && touch "\\$$A"
-L=\\$$(stat -c %Y "\\$$A" 2>/dev/null || echo 0)
-N=\\$$(date +%s)
-I=\\$$((N-L))
-[ -f "\\$$H" ] && G=\\$${RUNNER_GRACE_PERIOD:-60} || G=\\$${RUNNER_INITIAL_GRACE_PERIOD:-180}
-R=\\$$(grep -l '\"status\":\"running\"' \\$$J/*.job 2>/dev/null | wc -l || echo 0)
-if [ \\$$R -eq 0 ] && [ \\$$I -gt \\$$G ]; then
-  log "TERMINATING: idle \\$$I > grace \\$$G"
+A="$$V-last-activity"
+J="$$V-jobs"
+H="$$V-has-run-job"
+[ ! -f "\$$A" ] && touch "\$$A"
+L=\$$(stat -c %Y "\$$A" 2>/dev/null || echo 0)
+N=\$$(date +%s)
+I=\$$((N-L))
+[ -f "\$$H" ] && G=\$${RUNNER_GRACE_PERIOD:-60} || G=\$${RUNNER_INITIAL_GRACE_PERIOD:-180}
+R=\$$(grep -l '"status":"running"' \$$J/*.job 2>/dev/null | wc -l || echo 0)
+if [ \$$R -eq 0 ] && [ \$$I -gt \$$G ]; then
+  log "TERMINATING: idle \$$I > grace \$$G"
   deregister_all_runners
   flush_cloudwatch_logs
   debug_sleep_and_shutdown
 else
-  [ \\$$R -gt 0 ] && log "\\$$R job(s) running" || log "Idle \\$$I/\\$$G sec"
+  [ \$$R -gt 0 ] && log "\$$R job(s) running" || log "Idle \$$I/\$$G sec"
 fi
 EOFT
 
