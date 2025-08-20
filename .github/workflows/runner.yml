@@ -131,7 +131,7 @@ on:
         value: ${{ jobs.launch.outputs.mapping }}
 
 permissions:
-  id-token: write # Required for AWS OIDC
+  id-token: write  # Required for AWS OIDC
 
 jobs:
   launch:
