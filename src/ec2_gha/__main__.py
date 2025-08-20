@@ -12,22 +12,21 @@ from ec2_gha.defaults import (
 from gha_runner.gh import GitHubInstance
 from gha_runner.clouddeployment import DeployInstance
 from gha_runner.helper.input import EnvVarBuilder, check_required
-import os
 from os import environ
 
 
 def main():
-    env = dict(os.environ)
+    env = dict(environ)
     required = ["GH_PAT", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
     # Check that everything exists
     check_required(env, required)
     # Timeout for waiting for runner to register with GitHub
-    timeout_str = os.environ.get("INPUT_RUNNER_REGISTRATION_TIMEOUT", "").strip()
+    timeout_str = environ.get("INPUT_RUNNER_REGISTRATION_TIMEOUT", "").strip()
     timeout = int(timeout_str) if timeout_str else int(RUNNER_REGISTRATION_TIMEOUT)
 
-    token = os.environ["GH_PAT"]
+    token = environ["GH_PAT"]
     # Make a copy of environment variables for immutability
-    env = dict(os.environ)
+    env = dict(environ)
 
     builder = (
         EnvVarBuilder(env)

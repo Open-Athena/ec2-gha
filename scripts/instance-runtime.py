@@ -14,9 +14,8 @@ import re
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from functools import partial
-from typing import Dict, List, Optional
 
 from dateutil import parser as date_parser
 
@@ -34,7 +33,7 @@ from ec2_gha.log_constants import (
 
 err = partial(print, file=sys.stderr)
 
-def run_command(cmd: List[str]) -> Optional[str]:
+def run_command(cmd: list[str]) -> str | None:
     """Run a command and return output, or None on error."""
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
@@ -49,7 +48,7 @@ def run_command(cmd: List[str]) -> Optional[str]:
 
 
 
-def get_log_streams(instance_id: str, log_group: str = None) -> List[Dict]:
+def get_log_streams(instance_id: str, log_group: str = None) -> list[dict]:
     if log_group is None:
         log_group = DEFAULT_CLOUDWATCH_LOG_GROUP
     """Get CloudWatch log streams for an instance."""
@@ -69,7 +68,7 @@ def get_log_streams(instance_id: str, log_group: str = None) -> List[Dict]:
     return []
 
 
-def get_log_events(log_group: str, log_stream: str, limit: int = 100, start_from_head: bool = False) -> List[Dict]:
+def get_log_events(log_group: str, log_stream: str, limit: int = 100, start_from_head: bool = False) -> list[dict]:
     """Get events from a CloudWatch log stream."""
     cmd = [
         "aws", "logs", "get-log-events",
@@ -91,7 +90,7 @@ def get_log_events(log_group: str, log_stream: str, limit: int = 100, start_from
     return []
 
 
-def parse_timestamp(ts_str: str) -> Optional[datetime]:
+def parse_timestamp(ts_str: str) -> datetime | None:
     """Parse various timestamp formats and ensure timezone is set."""
     try:
         dt = date_parser.parse(ts_str)
@@ -103,7 +102,7 @@ def parse_timestamp(ts_str: str) -> Optional[datetime]:
         return None
 
 
-def extract_timestamp_from_log(message: str) -> Optional[datetime]:
+def extract_timestamp_from_log(message: str) -> datetime | None:
     """Extract timestamp from log message."""
     # Pattern: [Thu Aug 14 00:29:25 UTC 2025]
     match = re.search(r'\[([^]]+UTC \d{4})\]', message)
@@ -118,7 +117,7 @@ def extract_timestamp_from_log(message: str) -> Optional[datetime]:
     return None
 
 
-def analyze_instance(instance_id: str, log_group: str = None) -> Dict:
+def analyze_instance(instance_id: str, log_group: str = None) -> dict:
     if log_group is None:
         log_group = DEFAULT_CLOUDWATCH_LOG_GROUP
     """Analyze runtime and job execution for an instance."""
@@ -307,7 +306,7 @@ def analyze_instance(instance_id: str, log_group: str = None) -> Dict:
     return result
 
 
-def get_instances_from_github_url(url: str) -> List[str]:
+def get_instances_from_github_url(url: str) -> list[str]:
     """Extract instance IDs from a GitHub Actions URL."""
     # Parse the URL
     match = re.match(r'https://github\.com/([^/]+)/([^/]+)/actions/runs/(\d+)(?:/job/(\d+))?', url)
