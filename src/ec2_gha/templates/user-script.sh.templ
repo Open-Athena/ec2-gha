@@ -289,13 +289,12 @@ systemctl enable runner-termination-check.timer
 systemctl start runner-termination-check.timer
 
 # Build metadata labels (these will be added to the runner labels)
-METADATA_LABELS=",instance-id:$${INSTANCE_ID},instance-type:$${INSTANCE_TYPE}"
-if [ -n "$github_workflow" ]; then
-  WORKFLOW_LABEL=$$(echo "$github_workflow" | tr ' /' '-' | tr -cd '[:alnum:]-_')
-  METADATA_LABELS="$${METADATA_LABELS},workflow:$${WORKFLOW_LABEL}"
+METADATA_LABELS=",$${INSTANCE_ID},$${INSTANCE_TYPE}"
+# Add instance name as a label if provided
+if [ -n "$instance_name" ]; then
+  INSTANCE_NAME_LABEL=$$(echo "$instance_name" | tr ' /' '-' | tr -cd '[:alnum:]-_#')
+  METADATA_LABELS="$${METADATA_LABELS},$${INSTANCE_NAME_LABEL}"
 fi
-[ -n "$github_run_id" ] && METADATA_LABELS="$${METADATA_LABELS},run-id:$github_run_id"
-[ -n "$github_run_number" ] && METADATA_LABELS="$${METADATA_LABELS},run-number:$github_run_number"
 
 log "Setting up $$RUNNERS_PER_INSTANCE runner(s)"
 

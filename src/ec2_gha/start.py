@@ -94,6 +94,65 @@ class StartAWS(CreateCloudInstance):
     tags: list[dict[str, str]] = field(default_factory=list)
     userdata: str = ""
 
+    def _get_template_vars(self, idx: int = None) -> dict:
+        """Build template variables for instance naming.
+
+        Parameters
+        ----------
+        idx : int | None
+            Instance index for multi-instance launches
+
+        Returns
+        -------
+        dict
+            Dictionary of template variables for string substitution
+        """
+        from os import environ
+        import re
+
+        template_vars = {}
+
+        # Get repository name (just the basename)
+        if environ.get("GITHUB_REPOSITORY"):
+            template_vars["repo"] = environ["GITHUB_REPOSITORY"].split("/")[-1]
+        else:
+            template_vars["repo"] = "unknown"
+
+        # Get workflow full name (e.g., "Test pip install")
+        template_vars["workflow"] = environ.get("GITHUB_WORKFLOW", "unknown")
+
+        # Get workflow filename stem and ref from GITHUB_WORKFLOW_REF
+        workflow_ref = environ.get("GITHUB_WORKFLOW_REF", "")
+        if workflow_ref:
+            # Extract filename and ref from path like "owner/repo/.github/workflows/test.yml@ref"
+            m = re.search(r'/(?P<name>[^/@]+)\.(yml|yaml)@(?P<ref>[^@]+)$', workflow_ref)
+            if m:
+                # Get the workflow filename stem (e.g., "install" from "install.yaml")
+                template_vars["name"] = m['name']
+
+                # Clean up the ref - remove "refs/heads/" or "refs/tags/" prefix
+                ref = m['ref']
+                if ref.startswith('refs/heads/'):
+                    ref = ref[11:]
+                elif ref.startswith('refs/tags/'):
+                    ref = ref[10:]
+                template_vars["ref"] = ref
+            else:
+                template_vars["name"] = "unknown"
+                template_vars["ref"] = "unknown"
+        else:
+            template_vars["name"] = "unknown"
+            template_vars["ref"] = "unknown"
+
+        # Get run number
+        template_vars["run_number"] = environ.get("GITHUB_RUN_NUMBER", "unknown")
+
+        # Add instance index if provided (for multi-instance launches)
+        if idx is not None:
+            template_vars["idx"] = str(idx)
+
+        return template_vars
+
     def _build_aws_params(self, user_data_params: dict, idx: int = None) -> dict:
         """Build the parameters for the AWS API call.
 
@@ -127,52 +186,11 @@ class StartAWS(CreateCloudInstance):
         # Add default tags if not already present
         default_tags = []
         existing_keys = {tag["Key"] for tag in self.tags}
-        import os
 
         # Add Name tag if not provided
         if "Name" not in existing_keys:
-            # Build template variables
-            template_vars = {}
-
-            # Get repository name (just the basename)
-            if environ.get("GITHUB_REPOSITORY"):
-                template_vars["repo"] = environ["GITHUB_REPOSITORY"].split("/")[-1]
-            else:
-                template_vars["repo"] = "unknown"
-
-            # Get workflow full name (e.g., "Test pip install")
-            template_vars["workflow"] = environ.get("GITHUB_WORKFLOW", "unknown")
-
-            # Get workflow filename stem and ref from GITHUB_WORKFLOW_REF
-            workflow_ref = environ.get("GITHUB_WORKFLOW_REF", "")
-            if workflow_ref:
-                import re
-                # Extract filename and ref from path like "owner/repo/.github/workflows/test.yml@ref"
-                m = re.search(r'/(?P<name>[^/@]+)\.(yml|yaml)@(?P<ref>[^@]+)$', workflow_ref)
-                if m:
-                    # Get the workflow filename stem (e.g., "install" from "install.yaml")
-                    template_vars["name"] = m['name']
-
-                    # Clean up the ref - remove "refs/heads/" or "refs/tags/" prefix
-                    ref = m['ref']
-                    if ref.startswith('refs/heads/'):
-                        ref = ref[11:]
-                    elif ref.startswith('refs/tags/'):
-                        ref = ref[10:]
-                    template_vars["ref"] = ref
-                else:
-                    template_vars["name"] = "unknown"
-                    template_vars["ref"] = "unknown"
-            else:
-                template_vars["name"] = "unknown"
-                template_vars["ref"] = "unknown"
-
-            # Get run number
-            template_vars["run_number"] = environ.get("GITHUB_RUN_NUMBER", "unknown")
-
-            # Add instance index if provided (for multi-instance launches)
-            if idx is not None:
-                template_vars["idx"] = str(idx)
+            # Get template variables
+            template_vars = self._get_template_vars(idx)
 
             # Apply the instance name template
             from string import Template
@@ -226,6 +244,9 @@ class StartAWS(CreateCloudInstance):
         # Add log constants to the kwargs
         kwargs['log_prefix_job_started'] = LOG_PREFIX_JOB_STARTED
         kwargs['log_prefix_job_completed'] = LOG_PREFIX_JOB_COMPLETED
+
+        # Ensure instance_name has a default value
+        kwargs.setdefault('instance_name', '')
 
         # Load shared functions script - not a template, just include as-is
         shared_functions_file = importlib.resources.files("ec2_gha").joinpath("templates/shared-functions.sh")
@@ -352,6 +373,15 @@ class StartAWS(CreateCloudInstance):
             runner_tokens = " ".join(config["token"] for config in runner_configs)
             runner_labels = "|".join(config["labels"] for config in runner_configs)
 
+            # Generate instance name using template variables
+            if self.instance_name:
+                from string import Template
+                template_vars = self._get_template_vars(idx)
+                name_template = Template(self.instance_name)
+                instance_name_value = name_template.safe_substitute(**template_vars)
+            else:
+                instance_name_value = ""
+
             user_data_params = {
                 "cloudwatch_logs_group": self.cloudwatch_logs_group,
                 "debug": self.debug,
@@ -359,6 +389,7 @@ class StartAWS(CreateCloudInstance):
                 "github_run_id": environ.get("GITHUB_RUN_ID", ""),
                 "github_run_number": environ.get("GITHUB_RUN_NUMBER", ""),
                 "homedir": self.home_dir,
+                "instance_name": instance_name_value,  # Add the generated instance name
                 "max_instance_lifetime": self.max_instance_lifetime,
                 "repo": self.repo,
                 "runner_grace_period": self.runner_grace_period,

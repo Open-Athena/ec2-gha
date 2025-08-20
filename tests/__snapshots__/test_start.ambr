@@ -445,13 +445,11 @@
       systemctl enable runner-termination-check.timer
       systemctl start runner-termination-check.timer
       
-      METADATA_LABELS=",instance-id:${INSTANCE_ID},instance-type:${INSTANCE_TYPE}"
-      if [ -n "CI" ]; then
-        WORKFLOW_LABEL=$(echo "CI" | tr ' /' '-' | tr -cd '[:alnum:]-_')
-        METADATA_LABELS="${METADATA_LABELS},workflow:${WORKFLOW_LABEL}"
+      METADATA_LABELS=",${INSTANCE_ID},${INSTANCE_TYPE}"
+      if [ -n "" ]; then
+        INSTANCE_NAME_LABEL=$(echo "" | tr ' /' '-' | tr -cd '[:alnum:]-_#')
+        METADATA_LABELS="${METADATA_LABELS},${INSTANCE_NAME_LABEL}"
       fi
-      [ -n "16725250800" ] && METADATA_LABELS="${METADATA_LABELS},run-id:16725250800"
-      [ -n "1" ] && METADATA_LABELS="${METADATA_LABELS},run-number:1"
       
       log "Setting up $RUNNERS_PER_INSTANCE runner(s)"
       
@@ -974,13 +972,11 @@
       systemctl enable runner-termination-check.timer
       systemctl start runner-termination-check.timer
       
-      METADATA_LABELS=",instance-id:${INSTANCE_ID},instance-type:${INSTANCE_TYPE}"
-      if [ -n "CI" ]; then
-        WORKFLOW_LABEL=$(echo "CI" | tr ' /' '-' | tr -cd '[:alnum:]-_')
-        METADATA_LABELS="${METADATA_LABELS},workflow:${WORKFLOW_LABEL}"
+      METADATA_LABELS=",${INSTANCE_ID},${INSTANCE_TYPE}"
+      if [ -n "" ]; then
+        INSTANCE_NAME_LABEL=$(echo "" | tr ' /' '-' | tr -cd '[:alnum:]-_#')
+        METADATA_LABELS="${METADATA_LABELS},${INSTANCE_NAME_LABEL}"
       fi
-      [ -n "16725250800" ] && METADATA_LABELS="${METADATA_LABELS},run-id:16725250800"
-      [ -n "42" ] && METADATA_LABELS="${METADATA_LABELS},run-number:42"
       
       log "Setting up $RUNNERS_PER_INSTANCE runner(s)"
       
@@ -1467,13 +1463,11 @@
   systemctl enable runner-termination-check.timer
   systemctl start runner-termination-check.timer
   
-  METADATA_LABELS=",instance-id:${INSTANCE_ID},instance-type:${INSTANCE_TYPE}"
-  if [ -n "CI" ]; then
-    WORKFLOW_LABEL=$(echo "CI" | tr ' /' '-' | tr -cd '[:alnum:]-_')
-    METADATA_LABELS="${METADATA_LABELS},workflow:${WORKFLOW_LABEL}"
+  METADATA_LABELS=",${INSTANCE_ID},${INSTANCE_TYPE}"
+  if [ -n "" ]; then
+    INSTANCE_NAME_LABEL=$(echo "" | tr ' /' '-' | tr -cd '[:alnum:]-_#')
+    METADATA_LABELS="${METADATA_LABELS},${INSTANCE_NAME_LABEL}"
   fi
-  [ -n "16725250800" ] && METADATA_LABELS="${METADATA_LABELS},run-id:16725250800"
-  [ -n "42" ] && METADATA_LABELS="${METADATA_LABELS},run-number:42"
   
   log "Setting up $RUNNERS_PER_INSTANCE runner(s)"
   
@@ -1959,13 +1953,11 @@
   systemctl enable runner-termination-check.timer
   systemctl start runner-termination-check.timer
   
-  METADATA_LABELS=",instance-id:${INSTANCE_ID},instance-type:${INSTANCE_TYPE}"
-  if [ -n "CI" ]; then
-    WORKFLOW_LABEL=$(echo "CI" | tr ' /' '-' | tr -cd '[:alnum:]-_')
-    METADATA_LABELS="${METADATA_LABELS},workflow:${WORKFLOW_LABEL}"
+  METADATA_LABELS=",${INSTANCE_ID},${INSTANCE_TYPE}"
+  if [ -n "" ]; then
+    INSTANCE_NAME_LABEL=$(echo "" | tr ' /' '-' | tr -cd '[:alnum:]-_#')
+    METADATA_LABELS="${METADATA_LABELS},${INSTANCE_NAME_LABEL}"
   fi
-  [ -n "16725250800" ] && METADATA_LABELS="${METADATA_LABELS},run-id:16725250800"
-  [ -n "42" ] && METADATA_LABELS="${METADATA_LABELS},run-number:42"
   
   log "Setting up $RUNNERS_PER_INSTANCE runner(s)"
   
