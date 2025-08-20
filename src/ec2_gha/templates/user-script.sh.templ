@@ -69,6 +69,8 @@ source $$B/runner-common.sh
 logger "EC2-GHA: Starting userdata script"
 trap 'logger "EC2-GHA: Script failed at line $$LINENO with exit code $$?"' ERR
 trap 'terminate_instance "Setup script failed with error on line $$LINENO"' ERR
+# Handle watchdog termination signal
+trap 'if [ -f $$V-watchdog-terminate ]; then terminate_instance "No runners registered within timeout"; else terminate_instance "Script terminated"; fi' TERM
 
 # Set up registration timeout failsafe - terminate if runner doesn't register in time
 REGISTRATION_TIMEOUT="$runner_registration_timeout"
@@ -78,15 +80,21 @@ if ! [[ "$$REGISTRATION_TIMEOUT" =~ ^[0-9]+$$ ]]; then
   REGISTRATION_TIMEOUT=300
 fi
 logger "EC2-GHA: Registration timeout set to $$REGISTRATION_TIMEOUT seconds"
+# Create a marker file for watchdog termination request
+touch $$V-watchdog-active
 (
   log "Watchdog: Starting $$REGISTRATION_TIMEOUT second timeout"
   sleep $$REGISTRATION_TIMEOUT
   if [ ! -f $$V-registered ]; then
     log "Watchdog: Registration marker not found after timeout"
-    terminate_instance "Runner failed to register within $$REGISTRATION_TIMEOUT seconds"
+    # Signal main process to terminate instead of doing it directly
+    touch $$V-watchdog-terminate
+    # Kill the main script process to trigger its ERR trap
+    kill -TERM $$$$ 2>/dev/null || true
   else
     log "Watchdog: Registration marker found, exiting normally"
   fi
+  rm -f $$V-watchdog-active
 ) &
 REGISTRATION_WATCHDOG_PID=$$!
 log "Watchdog PID: $$REGISTRATION_WATCHDOG_PID"
@@ -333,6 +341,7 @@ done
 # Wait for all background jobs to complete
 log "Waiting for all runner configurations to complete..."
 failed=0
+succeeded=0
 for i in $${!pids[@]}; do
   wait $${pids[$$i]}
   if [ -f /tmp/runner-$$i-status ]; then
@@ -340,17 +349,26 @@ for i in $${!pids[@]}; do
     rm -f /tmp/runner-$$i-status
     if [ "$$status" != "0" ]; then
       log_error "Runner $$i configuration failed"
-      failed=1
+      failed=$$((failed + 1))
+    else
+      succeeded=$$((succeeded + 1))
     fi
   fi
 done
 
-if [ $$failed -ne 0 ]; then
-  terminate_instance "One or more runners failed to register"
+# Allow partial success - only terminate if ALL runners failed
+if [ $$succeeded -eq 0 ] && [ $$failed -gt 0 ]; then
+  terminate_instance "All runners failed to register"
+elif [ $$failed -gt 0 ]; then
+  log "WARNING: $$failed runner(s) failed, but $$succeeded succeeded. Continuing with partial capacity."
 fi
 
-log "All runners registered and started"
-touch $$V-registered
+if [ $$succeeded -gt 0 ]; then
+  log "$$succeeded runner(s) registered and started successfully"
+  touch $$V-registered
+else
+  log_error "No runners registered successfully"
+fi
 
 # Kill registration watchdog now that runners are registered
 if [ -f $$V-watchdog.pid ]; then
