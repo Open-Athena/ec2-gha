@@ -60,7 +60,7 @@ deregister_all_runners() {
 # Function to handle debug mode sleep and shutdown
 debug_sleep_and_shutdown() {
   if [ "$debug" = "true" ] || [ "$debug" = "True" ] || [ "$debug" = "1" ]; then
-    log "Debug mode: Sleeping for 600 seconds before shutdown to allow debugging..."
+    log "Debug: Sleeping 600s before shutdown..."
     # Detect the SSH user from the home directory
     local ssh_user=$(basename "$homedir" 2>/dev/null || echo "ec2-user")
     local public_ip=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
@@ -118,25 +118,16 @@ configure_runner() {
   cd "$runner_dir"
   tar -xzf /tmp/runner.tar.gz
 
-  # Install dependencies if needed (for AL2023, Debian 13, etc.)
+  # Install dependencies
   if [ -f ./bin/installdependencies.sh ]; then
-    log "Installing runner dependencies..."
-    # Try to install dependencies, but don't fail if the script has issues
-    # Some distros may have the dependencies pre-installed or named differently
+    log "Installing dependencies..."
     if ! sudo ./bin/installdependencies.sh >/dev/null 2>&1; then
-      log "Warning: installdependencies.sh reported issues, checking for libicu manually..."
-      # Try to install libicu manually based on the distro
+      # Try libicu on failure
       if command -v yum >/dev/null 2>&1; then
-        # Amazon Linux, RHEL, CentOS
         sudo yum install -y libicu >/dev/null 2>&1 || true
       elif command -v apt-get >/dev/null 2>&1; then
-        # Debian, Ubuntu
         wait_for_dpkg_lock
-        sudo apt-get update >/dev/null 2>&1 || true
         sudo apt-get install -y libicu-dev >/dev/null 2>&1 || true
-      elif command -v dnf >/dev/null 2>&1; then
-        # Fedora, newer RHEL
-        sudo dnf install -y libicu >/dev/null 2>&1 || true
       fi
     fi
   fi
