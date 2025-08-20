@@ -20,7 +20,7 @@ jobs:
   # First job type - runs on first instance
   build-job:
     needs: ec2
-    runs-on: ${{ fromJson(needs.ec2.outputs.instances)[0] }}
+    runs-on: ${{ fromJson(needs.ec2.outputs.runners)[0] }}
     name: Build job
     steps:
       - uses: actions/checkout@v4
@@ -46,7 +46,7 @@ jobs:
   # Second job type - runs on second instance
   test-job:
     needs: ec2
-    runs-on: ${{ fromJson(needs.ec2.outputs.instances)[1] }}
+    runs-on: ${{ fromJson(needs.ec2.outputs.runners)[1] }}
     name: Test job
     steps:
       - uses: actions/checkout@v4

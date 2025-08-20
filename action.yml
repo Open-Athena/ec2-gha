@@ -82,7 +82,7 @@ inputs:
 outputs:
   mapping:
     description: "A JSON object mapping instance IDs to unique GitHub runner labels. This is used in conjunction with the `instance_mapping` input when stopping."
-  instances:
+  runners:
     description: "A JSON list of the GitHub runner labels to be used in the 'runs-on' field"
   label:
     description: "The single runner label (for single instance use)"

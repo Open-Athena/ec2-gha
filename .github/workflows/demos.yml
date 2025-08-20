@@ -5,24 +5,29 @@ permissions:
   id-token: write
   contents: read
 jobs:
+  # Minimal demos for quick testing
+  demo-dbg-minimal:
+    uses: ./.github/workflows/demo-dbg-minimal.yml
+    secrets: inherit
   demo-gpu-minimal:
     uses: ./.github/workflows/demo-gpu-minimal.yml
     secrets: inherit
-  demo-gpu-job-seq:
-    uses: ./.github/workflows/demo-gpu-job-seq.yml
+
+  # Sweep demos for comprehensive testing
+  demo-cpu-sweep:
+    uses: ./.github/workflows/demo-cpu-sweep.yml
     secrets: inherit
-  demo-archs:
-    uses: ./.github/workflows/demo-archs.yml
+  demo-gpu-sweep:
+    uses: ./.github/workflows/demo-gpu-sweep.yml
     secrets: inherit
-  demo-matrix-wide:
-    uses: ./.github/workflows/demo-matrix-wide.yml
+
+  # Multi-instance/runner demos
+  demo-instances-mtx:
+    uses: ./.github/workflows/demo-instances-mtx.yml
     secrets: inherit
-  demo-multi-instance:
-    uses: ./.github/workflows/demo-multi-instance.yml
+  demo-runners-mtx:
+    uses: ./.github/workflows/demo-runners-mtx.yml
     secrets: inherit
-  demo-multi-job:
-    uses: ./.github/workflows/demo-multi-job.yml
-    secrets: inherit
-  demo-multi-runner:
-    uses: ./.github/workflows/demo-multi-runner.yml
+  demo-jobs-split:
+    uses: ./.github/workflows/demo-jobs-split.yml
     secrets: inherit

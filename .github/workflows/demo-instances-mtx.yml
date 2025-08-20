@@ -33,7 +33,7 @@ jobs:
     strategy:
       matrix:
         # Parse the JSON array of runner labels and use them in the matrix
-        runner: ${{ fromJson(needs.ec2.outputs.instances) }}
+        runner: ${{ fromJson(needs.ec2.outputs.runners) }}
     runs-on: ${{ matrix.runner }}
     name: Job on ${{ matrix.runner }}
     steps:

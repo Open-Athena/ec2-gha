@@ -127,9 +127,9 @@ on:
       id:
         description: "Instance ID for runs-on (single instance)"
         value: ${{ jobs.launch.outputs.id }}
-      instances:
-        description: "JSON array of runner labels (for multiple instances)"
-        value: ${{ jobs.launch.outputs.instances }}
+      runners:
+        description: "JSON array of runner labels"
+        value: ${{ jobs.launch.outputs.runners }}
       mapping:
         description: "JSON object mapping instance IDs to runner labels"
         value: ${{ jobs.launch.outputs.mapping }}
@@ -143,7 +143,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       id: ${{ steps.aws-start.outputs.label }}
-      instances: ${{ steps.aws-start.outputs.instances }}
+      runners: ${{ steps.aws-start.outputs.runners }}
       mapping: ${{ steps.aws-start.outputs.mapping }}
     steps:
       - name: Check EC2_LAUNCH_ROLE configuration
