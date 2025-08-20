@@ -44,6 +44,7 @@ fi
 export homedir
 
 # Write shared functions that will be used by multiple scripts
+# First write the variables that need template expansion
 cat > /usr/local/bin/runner-common.sh << EOSF
 # Auto-generated shared functions and variables
 # Set homedir for scripts that source this file
@@ -51,8 +52,13 @@ homedir="$$homedir"
 debug="$$debug"
 export homedir debug
 
+EOSF
+
+# Then append the shared functions using a quoted here-doc to prevent variable expansion
+cat >> /usr/local/bin/runner-common.sh << 'EOSF'
 $shared_functions
 EOSF
+
 chmod +x /usr/local/bin/runner-common.sh
 source /usr/local/bin/runner-common.sh
 
