@@ -321,6 +321,8 @@ for i in $${!tokens[@]}; do
     continue
   fi
   (
+    # Override ERR trap in subshell to prevent global side effects
+    trap 'echo "Subshell error on line $$LINENO" >&2; exit 1' ERR
     configure_runner $$i "$$token" "$${label}$$METADATA_LABELS" "$$homedir" "$repo" "$$INSTANCE_ID" "$runner_grace_period" "$runner_initial_grace_period"
     echo $$? > /tmp/runner-$$i-status
   ) &
