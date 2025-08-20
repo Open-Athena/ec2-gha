@@ -227,9 +227,9 @@ class StartAWS(CreateCloudInstance):
         kwargs['log_prefix_job_started'] = LOG_PREFIX_JOB_STARTED
         kwargs['log_prefix_job_completed'] = LOG_PREFIX_JOB_COMPLETED
 
-        # Load shared functions template - don't render it, just include as-is
-        shared_functions_template = importlib.resources.files("ec2_gha").joinpath("templates/shared-functions.sh.templ")
-        with shared_functions_template.open() as f:
+        # Load shared functions script - not a template, just include as-is
+        shared_functions_file = importlib.resources.files("ec2_gha").joinpath("templates/shared-functions.sh")
+        with shared_functions_file.open() as f:
             shared_functions_content = f.read()
 
         # Strip the shebang line from shared functions since it will be embedded

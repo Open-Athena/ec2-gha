@@ -19,7 +19,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-ec2_gha = ["*.templ", "templates/*.templ"]
+ec2_gha = ["*.templ", "templates/*.templ", "templates/*.sh"]
 
 [tool.pytest.ini_options]
 markers = ["slow: marks test as slow"]
