@@ -6,13 +6,13 @@ permissions:
   id-token: write  # Required for AWS OIDC authentication
   contents: read   # Required for actions/checkout
 jobs:
-  # Launch GPU instances with PyTorch 2.7 DLAMI
+  # Launch GPU instances with PyTorch DLAMIs
   g4dn:
     name: g4dn.xlarge
     uses: ./.github/workflows/runner.yml
     with:
       ec2_instance_type: g4dn.xlarge
-      ec2_image_id: ami-0f20cc6143e3cdb84  # PyTorch 2.7 Ubuntu 22.04
+      ec2_image_id: ami-00dddcf8fefea182f  # Deep Learning OSS PyTorch 2.5.1 Ubuntu 22.04
       instance_name: "gpu-sweep/g4dn#$run_number"
     secrets: inherit
   g5:
@@ -20,7 +20,7 @@ jobs:
     uses: ./.github/workflows/runner.yml
     with:
       ec2_instance_type: g5.xlarge
-      ec2_image_id: ami-0f20cc6143e3cdb84  # PyTorch 2.7 Ubuntu 22.04
+      ec2_image_id: ami-00dddcf8fefea182f  # Deep Learning OSS PyTorch 2.5.1 Ubuntu 22.04
       instance_name: "gpu-sweep/g5#$run_number"
     secrets: inherit
   g6:
@@ -28,7 +28,7 @@ jobs:
     uses: ./.github/workflows/runner.yml
     with:
       ec2_instance_type: g6.xlarge
-      ec2_image_id: ami-0f20cc6143e3cdb84  # PyTorch 2.7 Ubuntu 22.04
+      ec2_image_id: ami-00dddcf8fefea182f  # Deep Learning OSS PyTorch 2.5.1 Ubuntu 22.04
       instance_name: "gpu-sweep/g6#$run_number"
     secrets: inherit
   g5g:
@@ -36,7 +36,7 @@ jobs:
     uses: ./.github/workflows/runner.yml
     with:
       ec2_instance_type: g5g.xlarge
-      ec2_image_id: ami-030b738fa2282338b  # PyTorch 2.7 Ubuntu 22.04 ARM64
+      ec2_image_id: ami-00cbe74a3dff23b9f  # Deep Learning ARM64 OSS PyTorch 2.5.1 Ubuntu 22.04
       instance_name: "gpu-sweep/g5g#$run_number"
     secrets: inherit
 
@@ -48,7 +48,10 @@ jobs:
     steps:
       - name: GPU Test
         run: |
-          nvidia-smi | grep Tesla
+          nvidia-smi
+          # Activate PyTorch conda environment
+          source /opt/conda/etc/profile.d/conda.sh
+          conda activate pytorch
           python3 -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.cuda.is_available()}')"
           python3 -c "import torch; print(f'GPU: {torch.cuda.get_device_name(0)}')"
 
@@ -59,7 +62,10 @@ jobs:
     steps:
       - name: GPU Test
         run: |
-          nvidia-smi | grep "NVIDIA A10"
+          nvidia-smi
+          # Activate PyTorch conda environment
+          source /opt/conda/etc/profile.d/conda.sh
+          conda activate pytorch
           python3 -c "import torch; print(f'PyTorch: {torch.__version__}, GPU: {torch.cuda.get_device_name(0)}')"
 
   test-g6:
@@ -70,6 +76,9 @@ jobs:
       - name: GPU Test
         run: |
           nvidia-smi
+          # Activate PyTorch conda environment
+          source /opt/conda/etc/profile.d/conda.sh
+          conda activate pytorch
           python3 -c "import torch; print(f'PyTorch: {torch.__version__}, GPU: {torch.cuda.get_device_name(0)}')"
 
   test-g5g:
@@ -83,13 +92,18 @@ jobs:
           echo "g5g.xlarge: AWS Graviton (ARM64) + NVIDIA T4g GPU"
           nvidia-smi
           echo ""
-          echo "=== PyTorch Version ==="
+          echo "=== PyTorch Test ==="
+          # Activate PyTorch conda environment
+          source /opt/conda/etc/profile.d/conda.sh
+          conda activate pytorch
           python3 -c "import torch; print(f'PyTorch: {torch.__version__}')"
           python3 -c "import torch; print(f'CUDA Available: {torch.cuda.is_available()}')"
           python3 -c "import torch; print(f'CUDA Version: {torch.version.cuda}')"
           python3 -c "import torch; print(f'GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"N/A\"}')"
       - name: Basic GPU Test
         run: |
+          source /opt/conda/etc/profile.d/conda.sh
+          conda activate pytorch
           python3 -c "
           import torch
           device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
