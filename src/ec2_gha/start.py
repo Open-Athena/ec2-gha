@@ -135,16 +135,16 @@ class StartAWS(CreateCloudInstance):
             template_vars = {}
 
             # Get repository name (just the basename)
-            if os.environ.get("GITHUB_REPOSITORY"):
-                template_vars["repo"] = os.environ["GITHUB_REPOSITORY"].split("/")[-1]
+            if environ.get("GITHUB_REPOSITORY"):
+                template_vars["repo"] = environ["GITHUB_REPOSITORY"].split("/")[-1]
             else:
                 template_vars["repo"] = "unknown"
 
             # Get workflow full name (e.g., "Test pip install")
-            template_vars["workflow"] = os.environ.get("GITHUB_WORKFLOW", "unknown")
+            template_vars["workflow"] = environ.get("GITHUB_WORKFLOW", "unknown")
 
             # Get workflow filename stem and ref from GITHUB_WORKFLOW_REF
-            workflow_ref = os.environ.get("GITHUB_WORKFLOW_REF", "")
+            workflow_ref = environ.get("GITHUB_WORKFLOW_REF", "")
             if workflow_ref:
                 import re
                 # Extract filename and ref from path like "owner/repo/.github/workflows/test.yml@ref"
@@ -168,7 +168,7 @@ class StartAWS(CreateCloudInstance):
                 template_vars["ref"] = "unknown"
 
             # Get run number
-            template_vars["run_number"] = os.environ.get("GITHUB_RUN_NUMBER", "unknown")
+            template_vars["run_number"] = environ.get("GITHUB_RUN_NUMBER", "unknown")
 
             # Add instance index if provided (for multi-instance launches)
             if idx is not None:
@@ -182,16 +182,16 @@ class StartAWS(CreateCloudInstance):
             default_tags.append({"Key": "Name", "Value": name_value})
 
         # Add repository tag if available
-        if "Repository" not in existing_keys and os.environ.get("GITHUB_REPOSITORY"):
-            default_tags.append({"Key": "Repository", "Value": os.environ["GITHUB_REPOSITORY"]})
+        if "Repository" not in existing_keys and environ.get("GITHUB_REPOSITORY"):
+            default_tags.append({"Key": "Repository", "Value": environ["GITHUB_REPOSITORY"]})
 
         # Add workflow tag if available
-        if "Workflow" not in existing_keys and os.environ.get("GITHUB_WORKFLOW"):
-            default_tags.append({"Key": "Workflow", "Value": os.environ["GITHUB_WORKFLOW"]})
+        if "Workflow" not in existing_keys and environ.get("GITHUB_WORKFLOW"):
+            default_tags.append({"Key": "Workflow", "Value": environ["GITHUB_WORKFLOW"]})
 
         # Add run URL tag if available
-        if "URL" not in existing_keys and os.environ.get("GITHUB_SERVER_URL") and os.environ.get("GITHUB_REPOSITORY") and os.environ.get("GITHUB_RUN_ID"):
-            gha_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+        if "URL" not in existing_keys and environ.get("GITHUB_SERVER_URL") and environ.get("GITHUB_REPOSITORY") and environ.get("GITHUB_RUN_ID"):
+            gha_url = f"{environ['GITHUB_SERVER_URL']}/{environ['GITHUB_REPOSITORY']}/actions/runs/{environ['GITHUB_RUN_ID']}"
             default_tags.append({"Key": "URL", "Value": gha_url})
 
         # Combine user tags with default tags
