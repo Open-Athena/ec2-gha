@@ -40,5 +40,5 @@ jobs:
       type: ${{ matrix.instance_type }}
       ami: ${{ matrix.ami }}
       sleep: ${{ inputs.sleep }}
-      instance_name: "cpu-sweep#$run ${{ matrix.os }}-${{ matrix.arch }}"
+      instance_name: 'cpu-sweep#$run ${{ matrix.os }} ${{ matrix.arch }}'
     secrets: inherit
