@@ -506,16 +506,34 @@ class StartAWS(CreateCloudInstance):
             A dictionary of instance IDs and labels.
 
         """
-        # Flatten all labels from all instances
-        github_labels = []
-        for labels in mapping.values():
-            if isinstance(labels, list):
-                github_labels.extend(labels)
-            else:
-                github_labels.append(labels)
+        # Build matrix objects for all runners
+        matrix_objects = []
+        idx = 0
 
-        output("mapping", json.dumps(mapping))
-        output("runners", json.dumps(github_labels))
+        for instance_idx, (instance_id, labels) in enumerate(mapping.items()):
+            if isinstance(labels, list):
+                # Multiple runners on this instance
+                for runner_idx, label in enumerate(labels):
+                    matrix_objects.append({
+                        "idx": idx,
+                        "id": label,
+                        "instance_id": instance_id,
+                        "instance_idx": instance_idx,
+                        "runner_idx": runner_idx
+                    })
+                    idx += 1
+            else:
+                # Single runner on this instance
+                matrix_objects.append({
+                    "idx": idx,
+                    "id": labels,
+                    "instance_id": instance_id,
+                    "instance_idx": instance_idx,
+                    "runner_idx": 0
+                })
+                idx += 1
+
+        output("matrix", json.dumps(matrix_objects))
 
         # For single instance use, output simplified values
         if len(mapping) == 1 and self.runners_per_instance == 1:

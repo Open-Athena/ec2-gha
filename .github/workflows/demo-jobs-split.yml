@@ -19,7 +19,7 @@ jobs:
   # First job type - runs on first instance
   build-job:
     needs: ec2
-    runs-on: ${{ fromJson(needs.ec2.outputs.runners)[0] }}
+    runs-on: ${{ fromJson(needs.ec2.outputs.matrix)[0].id }}
     name: Build job
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +45,7 @@ jobs:
   # Second job type - runs on second instance
   test-job:
     needs: ec2
-    runs-on: ${{ fromJson(needs.ec2.outputs.runners)[1] }}
+    runs-on: ${{ fromJson(needs.ec2.outputs.matrix)[1].id }}
     name: Test job
     steps:
       - uses: actions/checkout@v4

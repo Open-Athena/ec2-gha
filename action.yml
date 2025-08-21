@@ -79,10 +79,8 @@ inputs:
     description: "SSH public key to add to authorized_keys for debugging access"
     required: false
 outputs:
-  mapping:
-    description: "A JSON object mapping instance IDs to unique GitHub runner labels. This is used in conjunction with the `instance_mapping` input when stopping."
-  runners:
-    description: "A JSON list of the GitHub runner labels to be used in the 'runs-on' field"
+  matrix:
+    description: "A JSON array of objects for matrix strategies. Each object has: idx (overall 0-based index), id (runner label), instance_id, instance_idx (0-based instance index), runner_idx (0-based runner index within instance)"
   label:
     description: "The single runner label (for single instance use)"
   instance-id:
