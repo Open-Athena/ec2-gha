@@ -146,4 +146,3 @@ jobs:
             echo "Last 5 lines of config log:"
             tail -5 /tmp/runner-0-config.log
           fi
-

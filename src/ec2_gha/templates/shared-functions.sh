@@ -4,19 +4,20 @@
 
 # Logging functions
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/runner-setup.log; }
-log_error() { log "ERROR: $1" >&2; }
+err() { log "ERROR: $1" >&2; }
+has() { command -v "$@" >/dev/null 2>&1; }
 
 # Wait for dpkg lock to be released (for Debian/Ubuntu systems)
-wait_for_dpkg_lock() {
-  local timeout=120
+dpkg_lock_wait() {
+  local t=120
   while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
-    if [ $timeout -le 0 ]; then
+    if [ $t -le 0 ]; then
       log "WARNING: dpkg lock timeout, proceeding anyway"
       break
     fi
-    log "dpkg is locked, waiting... ($timeout seconds remaining)"
+    log "dpkg is locked, waiting... ($t seconds remaining)"
     sleep 5
-    timeout=$((timeout - 5))
+    t=$((t - 5))
   done
 }
 
@@ -31,11 +32,12 @@ flush_cloudwatch_logs() {
 # Get EC2 instance metadata (IMDSv2 compatible)
 get_metadata() {
   local path="$1"
-  local token=$(curl -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 300" http://169.254.169.254/latest/api/token 2>/dev/null || true)
+  local l=http://169.254.169.254/latest
+  local token=$(curl -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 300" $l/api/token 2>/dev/null || true)
   if [ -n "$token" ]; then
-    curl -s -H "X-aws-ec2-metadata-token: $token" "http://169.254.169.254/latest/meta-data/$path" 2>/dev/null || echo "unknown"
+    curl -s -H "X-aws-ec2-metadata-token: $token" "$l/meta-data/$path" 2>/dev/null || echo "unknown"
   else
-    curl -s "http://169.254.169.254/latest/meta-data/$path" 2>/dev/null || echo "unknown"
+    curl -s "$l/meta-data/$path" 2>/dev/null || echo "unknown"
   fi
   return 0  # Always return success to avoid set -e issues
 }
@@ -57,8 +59,8 @@ deregister_all_runners() {
   done
 }
 
-# Function to handle debug mode sleep and shutdown
-debug_sleep_and_shutdown() {
+# Shutdown instance (possibly after a debug-sleep)
+end() {
   if [ "$debug" = "true" ] || [ "$debug" = "True" ] || [ "$debug" = "1" ]; then
     log "Debug: Sleeping 600s before shutdown..."
     # Detect the SSH user from the home directory
@@ -75,7 +77,7 @@ debug_sleep_and_shutdown() {
 }
 
 # Function to handle fatal errors and terminate the instance
-terminate_instance() {
+terminate() {
   local reason="$1"
   local instance_id=$(get_metadata "instance-id")
 
@@ -95,7 +97,7 @@ terminate_instance() {
   fi
 
   flush_cloudwatch_logs
-  debug_sleep_and_shutdown
+  end
   exit 1
 }
 
@@ -136,7 +138,7 @@ configure_runner() {
         elif command -v yum >/dev/null 2>&1; then
           sudo yum install -y libicu >/dev/null 2>&1 || true
         elif command -v apt-get >/dev/null 2>&1; then
-          wait_for_dpkg_lock
+          dpkg_lock_wait
           sudo apt-get update >/dev/null 2>&1 || true
           sudo apt-get install -y libicu-dev >/dev/null 2>&1 || true
         fi
@@ -164,7 +166,7 @@ EOF
   if grep -q "Runner successfully added" /tmp/runner-$idx-config.log; then
     log "Runner $idx registered successfully"
   else
-    log_error "Failed to register runner $idx"
+    err "Failed to register runner $idx"
     return 1
   fi
 
