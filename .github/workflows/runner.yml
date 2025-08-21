@@ -126,9 +126,9 @@ on:
       id:
         description: "Instance ID for runs-on (single instance)"
         value: ${{ jobs.launch.outputs.id }}
-      matrix:
+      mtx:
         description: "JSON array of objects for matrix strategies"
-        value: ${{ jobs.launch.outputs.matrix }}
+        value: ${{ jobs.launch.outputs.mtx }}
 
 permissions:
   id-token: write  # Required for AWS OIDC
@@ -139,7 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       id: ${{ steps.aws-start.outputs.label }}
-      matrix: ${{ steps.aws-start.outputs.matrix }}
+      mtx: ${{ steps.aws-start.outputs.mtx }}
     steps:
       - name: Check EC2_LAUNCH_ROLE configuration
         run: |

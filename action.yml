@@ -79,7 +79,7 @@ inputs:
     description: "SSH public key to add to authorized_keys for debugging access"
     required: false
 outputs:
-  matrix:
+  mtx:
     description: "A JSON array of objects for matrix strategies. Each object has: idx (overall 0-based index), id (runner label), instance_id, instance_idx (0-based instance index), runner_idx (0-based runner index within instance)"
   label:
     description: "The single runner label (for single instance use)"

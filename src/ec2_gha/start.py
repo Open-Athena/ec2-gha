@@ -533,7 +533,7 @@ class StartAWS(CreateCloudInstance):
                 })
                 idx += 1
 
-        output("matrix", json.dumps(matrix_objects))
+        output("mtx", json.dumps(matrix_objects))
 
         # For single instance use, output simplified values
         if len(mapping) == 1 and self.runners_per_instance == 1:
