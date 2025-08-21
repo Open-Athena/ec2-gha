@@ -42,6 +42,10 @@ on:
         required: false
         type: boolean
         default: true
+      instance_name:
+        description: "Instance name"
+        required: false
+        type: string
   workflow_call:  # Called by demo-cpu-sweep, more for the "minimal", less for the "dbg"
     inputs:
       type:
@@ -64,6 +68,10 @@ on:
         required: false
         type: boolean
         default: false
+      instance_name:
+        description: "Instance name"
+        required: false
+        type: string
 
 permissions:
   id-token: write  # Required for AWS OIDC authentication
@@ -78,7 +86,7 @@ jobs:
       ec2_instance_type: ${{ inputs.type }}
       ec2_image_id: ${{ inputs.ami }}
       debug: ${{ inputs.debug }}
-      instance_name: "debug/$name#$run_number"
+      instance_name: ${{ inputs.instance_name || 'debug/$name#$run' }}
       # `workflow_dispatch has higher defaults for these; revert to original defaults for `workflow_call`
       runner_registration_timeout: ${{ inputs.registration_timeout || '300' }}
       runner_grace_period: ${{ inputs.grace_period || '60' }}
