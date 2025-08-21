@@ -66,8 +66,8 @@ Useful regression test, demonstrates and verifies features.
 
 ### [`jobs-split`](demo-jobs-split.yml) – different job types on separate instances <a id="jobs-split"></a>
 - Launches 2 instances
-- Build job runs on first instance (`runners[0]`)
-- Test job runs on second instance (`runners[1]`)
+- Build job runs on first instance
+- Test job runs on second instance
 - Demonstrates targeted job placement
 - **Instance type:** `t3.medium`
 - **Use case:** Pipeline with dedicated instances per stage

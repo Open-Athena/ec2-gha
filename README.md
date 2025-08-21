@@ -130,8 +130,7 @@ Many of these fall back to corresponding `vars.*` (if not provided as `inputs`):
 | Name | Description                                                              |
 |------|--------------------------------------------------------------------------|
 | id   | Single runner label for `runs-on` (when `instance_count=1`)            |
-| instances | JSON array of runner labels (for use with matrix strategy)         |
-| mapping | JSON object mapping instance IDs to labels (for debugging)          |
+| mtx | JSON array of objects for matrix strategies (each has: idx, id, instance_id, instance_idx, runner_idx) |
 
 ## Technical Details <a id="technical"></a>
 
@@ -160,10 +159,10 @@ jobs:
     needs: ec2
     strategy:
       matrix:
-        runner: ${{ fromJson(needs.ec2.outputs.instances) }}
-    runs-on: ${{ matrix.runner }}
+        runner: ${{ fromJson(needs.ec2.outputs.mtx) }}
+    runs-on: ${{ matrix.runner.id }}
     steps:
-      - run: echo "Running on ${{ matrix.runner }}"
+      - run: echo "Running on runner ${{ matrix.runner.idx }} (instance ${{ matrix.runner.instance_idx }})"
 ```
 
 Each instance gets a unique runner label and can execute jobs independently. This is useful for:
@@ -185,19 +184,19 @@ jobs:
 
   prepare:
     needs: ec2
-    runs-on: ${{ needs.ec2.outputs.instance }}
+    runs-on: ${{ needs.ec2.outputs.id }}
     steps:
       - run: echo "Preparing environment"
 
   train:
     needs: [ec2, prepare]
-    runs-on: ${{ needs.ec2.outputs.instance }}
+    runs-on: ${{ needs.ec2.outputs.id }}
     steps:
       - run: echo "Training model"
 
   evaluate:
     needs: [ec2, train]
-    runs-on: ${{ needs.ec2.outputs.instance }}
+    runs-on: ${{ needs.ec2.outputs.id }}
     steps:
       - run: echo "Evaluating results"
 ```

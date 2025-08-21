@@ -44,7 +44,7 @@ ruff format src/
     - AWS/EC2 configs (instance type, AMI, optional CloudWatch log group, keypair/pubkey for SSH-debugging, etc.)
     - GitHub runner configurations (timeouts / poll intervals, labels, etc.)
   - Outputs:
-    - `mapping`, `instances`
+    - `mtx` (array of objects for matrix strategies)
     - When only one instance/runner is created, also outputs `label` and `instance-id`
 
 ### Core Python Modules
