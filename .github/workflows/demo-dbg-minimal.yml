@@ -86,7 +86,7 @@ jobs:
 
   test:
     needs: launch
-    name: 🧪
+    name: 🔬
     runs-on: ${{ needs.launch.outputs.id }}
     steps:
       - name: Instance Info
