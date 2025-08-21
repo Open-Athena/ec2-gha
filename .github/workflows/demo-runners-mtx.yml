@@ -43,16 +43,18 @@ jobs:
     needs: ec2
     strategy:
       matrix:
-        # Parse the JSON array of runner labels and use them in the matrix
-        runner: ${{ fromJson(needs.ec2.outputs.runners) }}
-    runs-on: ${{ matrix.runner }}
-    name: Job on ${{ matrix.runner }}
+        # Parse the JSON array of runner objects for the matrix
+        runner: ${{ fromJson(needs.ec2.outputs.matrix) }}
+    runs-on: ${{ matrix.runner.id }}
+    name: 'Parallel job ${{ matrix.runner.idx }} (${{ matrix.runner.id }})'
     steps:
       - uses: actions/checkout@v4
 
       - name: Runner info
         run: |
-          echo "Running on runner with label: ${{ matrix.runner }}"
+          echo "Running on runner with label: ${{ matrix.runner.id }}"
+          echo "Runner index: ${{ matrix.runner.idx }}"
+          echo "Runner index on instance: ${{ matrix.runner.runner_idx }}"
           echo "Hostname: $(hostname)"
           echo "Instance ID: $(curl -s http://169.254.169.254/latest/meta-data/instance-id)"
           echo "Instance type: $(curl -s http://169.254.169.254/latest/meta-data/instance-type)"
