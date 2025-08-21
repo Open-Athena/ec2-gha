@@ -415,8 +415,8 @@ def test_set_instance_mapping(aws, monkeypatch):
     with patch("builtins.open", mock_file):
         aws.set_instance_mapping(mapping)
 
-    # Should be called 4 times for single instance (mapping, instances, instance-id, label)
-    assert mock_file.call_count == 4
+    # Should be called 3 times for single instance (mtx, instance-id, label)
+    assert mock_file.call_count == 3
     assert all(call[0][0] == "mock_output_file" for call in mock_file.call_args_list)
 
 
@@ -428,6 +428,6 @@ def test_set_instance_mapping_multiple(aws, monkeypatch):
     with patch("builtins.open", mock_file):
         aws.set_instance_mapping(mapping)
 
-    # Should be called 2 times for multiple instances (mapping, instances only)
-    assert mock_file.call_count == 2
+    # Should be called 1 time for multiple instances (mtx only)
+    assert mock_file.call_count == 1
     assert all(call[0][0] == "mock_output_file" for call in mock_file.call_args_list)

@@ -118,30 +118,28 @@ configure_runner() {
   cd "$runner_dir"
   tar -xzf /tmp/runner.tar.gz
 
-  # Install dependencies
+  # Install dependencies if needed
   if [ -f ./bin/installdependencies.sh ]; then
-    log "Installing dependencies..."
-    # Don't let installdependencies.sh failure trigger ERR trap
-    set +e
-    sudo ./bin/installdependencies.sh >/dev/null 2>&1
-    local deps_result=$?
-    set -e
-
-    if [ $deps_result -ne 0 ]; then
-      log "Dependencies script failed, installing required packages manually..."
-      # Install runner dependencies based on package manager
-      if command -v dnf >/dev/null 2>&1; then
-        # Fedora/RHEL 8+/AL2023
-        sudo dnf install -y libicu lttng-ust >/dev/null 2>&1 || true
-      elif command -v yum >/dev/null 2>&1; then
-        # RHEL 7/CentOS 7/AL2
-        sudo yum install -y libicu >/dev/null 2>&1 || true
-        # Note: lttng-ust often not available in standard repos for AL2
-      elif command -v apt-get >/dev/null 2>&1; then
-        # Debian/Ubuntu
-        wait_for_dpkg_lock
-        sudo apt-get update >/dev/null 2>&1 || true
-        sudo apt-get install -y libicu-dev >/dev/null 2>&1 || true
+    # Quick check for common AMIs with pre-installed deps
+    if command -v dpkg >/dev/null 2>&1 && dpkg -l libicu[0-9]* 2>/dev/null | grep -q ^ii; then
+      log "Dependencies exist, skipping install"
+    else
+      log "Installing dependencies..."
+      set +e
+      sudo ./bin/installdependencies.sh >/dev/null 2>&1
+      local deps_result=$?
+      set -e
+      if [ $deps_result -ne 0 ]; then
+        log "Dependencies script failed, installing manually..."
+        if command -v dnf >/dev/null 2>&1; then
+          sudo dnf install -y libicu lttng-ust >/dev/null 2>&1 || true
+        elif command -v yum >/dev/null 2>&1; then
+          sudo yum install -y libicu >/dev/null 2>&1 || true
+        elif command -v apt-get >/dev/null 2>&1; then
+          wait_for_dpkg_lock
+          sudo apt-get update >/dev/null 2>&1 || true
+          sudo apt-get install -y libicu-dev >/dev/null 2>&1 || true
+        fi
       fi
     fi
   fi
