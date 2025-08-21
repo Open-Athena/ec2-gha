@@ -33,7 +33,7 @@ jobs:
     uses: ./.github/workflows/runner.yml
     secrets: inherit
     with:
-      instance_name: "$repo/$name (#$run_number) – $idx"
+      instance_name: "$repo/$name #$run"
       instance_count: "1"
       runners_per_instance: ${{ inputs.runners_per_instance }}
       ec2_image_id: ami-0e86e20dae9224db8  # Ubuntu 24.04 LTS x86_64 (us-east-1)

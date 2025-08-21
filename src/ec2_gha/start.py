@@ -144,8 +144,10 @@ class StartAWS(CreateCloudInstance):
             template_vars["name"] = "unknown"
             template_vars["ref"] = "unknown"
 
-        # Get run number
-        template_vars["run_number"] = environ.get("GITHUB_RUN_NUMBER", "unknown")
+        # Get run number - set both run_number and run as alias
+        run_num = environ.get("GITHUB_RUN_NUMBER", "unknown")
+        template_vars["run_number"] = run_num
+        template_vars["run"] = run_num  # Alias for shorter naming
 
         # Add instance index if provided (for multi-instance launches)
         if idx is not None:

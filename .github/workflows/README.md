@@ -54,7 +54,7 @@ Useful regression test, demonstrates and verifies features.
 - Creates configurable number of instances (default: 3)
 - Uses matrix strategy to run jobs in parallel
 - Each job runs on its own EC2 instance
-- **Customizes `instance_name`**: `"$repo/$name-$idx (#$run_number)"`
+- **Customizes `instance_name`**: `"$repo/$name#$run $idx"`
   - Uses `$idx` template variable (0-based index) to distinguish instances
   - Results in names like `"ec2-gha/multi-instance-0 (#123)"`, `"ec2-gha/multi-instance-1 (#123)"`, etc.
 - **Instance type:** `t3.medium`
@@ -65,7 +65,7 @@ Useful regression test, demonstrates and verifies features.
 - Run build job on first instance
 - Run test job on second instance
 - Aggregate results from both instances
-- **Customizes `instance_name`**: `"$repo/$name-$idx (#$run_number)"`
+- **Customizes `instance_name`**: `"$repo/$name#$run $idx"`
   - Results in names like `"ec2-gha/multi-job-0 (#123)"` and `"ec2-gha/multi-job-1 (#123)"`
 - **Instance type:** `t3.medium`
 - **Use case:** Pipeline with dedicated instances per stage
