@@ -62,16 +62,13 @@ Example workflows demonstrating ec2-gha capabilities are in [`.github/workflows/
 
 [![](img/demos%2325%201.png)][demos#25]
 
-### GPU Workflows
-- [`demo-gpu-minimal.yml`](.github/workflows/demo-gpu-minimal.yml) - Minimal GPU test with `nvidia-smi`
-- [`demo-gpu-job-seq.yml`](.github/workflows/demo-gpu-job-seq.yml) - Sequential ML workflow (prepare→train→evaluate) using pre-installed PyTorch from DLAMI
-- Real-world example: [Mamba installation testing](https://github.com/Open-Athena/mamba/blob/gha/.github/workflows/install.yaml) - Shows `instance_name` customization for version-specific testing
-
-### Architecture & Parallelization
-- [`demo-archs.yml`](.github/workflows/demo-archs.yml) - Cross-architecture testing (x86 and ARM)
-- [`demo-multi-instance.yml`](.github/workflows/demo-multi-instance.yml) - Parallel jobs on multiple instances
-- [`demo-multi-job.yml`](.github/workflows/demo-multi-job.yml) - Different job types on separate instances
-- [`demo-matrix-wide.yml`](.github/workflows/demo-matrix-wide.yml) - Wide matrix strategy across many instances
+- [`demo-dbg-minimal.yml`](.github/workflows/demo-dbg-minimal.yml) - Configurable debugging instance
+- [`demo-gpu-minimal.yml`](.github/workflows/demo-gpu-minimal.yml) - Basic GPU test
+- [`demo-cpu-sweep.yml`](.github/workflows/demo-cpu-sweep.yml) - OS/arch matrix (Ubuntu, Debian, AL2/AL2023 on x86/ARM)
+- [`demo-gpu-sweep.yml`](.github/workflows/demo-gpu-sweep.yml) - GPU instances (g4dn, g5, g6, g5g) with PyTorch
+- [`demo-instances-mtx.yml`](.github/workflows/demo-instances-mtx.yml) - Multiple instances for parallel jobs
+- [`demo-runners-mtx.yml`](.github/workflows/demo-runners-mtx.yml) - Multiple runners on single instance
+- [`demo-jobs-split.yml`](.github/workflows/demo-jobs-split.yml) - Different job types on separate instances
 
 ### Test Suite
 - [`demos.yml`](.github/workflows/demos.yml) - Runs all demos for regression testing
@@ -119,7 +116,7 @@ Many of these fall back to corresponding `vars.*` (if not provided as `inputs`):
 - `ec2_instance_type` - Instance type (default: `t3.medium`)
 - `ec2_key_name` - EC2 key pair name (for [SSH access])
 - `instance_count` - Number of instances to create (default: 1, for parallel jobs)
-- `instance_name` - Name tag template for EC2 instances. Uses Python string.Template format with variables: `$repo`, `$name` (workflow filename stem), `$workflow` (full workflow name), `$ref`, `$run_number`, `$idx` (0-based instance index for multi-instance launches). Default: `$repo/$name#$run_number`
+- `instance_name` - Name tag template for EC2 instances. Uses Python string.Template format with variables: `$repo`, `$name` (workflow filename stem), `$workflow` (full workflow name), `$ref`, `$run` (number), `$idx` (0-based instance index for multi-instance launches). Default: `$repo/$name#$run` (or `$repo/$name#$run $idx` for multi-instance)
 - `ec2_root_device_size` - Root device size in GB (default: 0 = use AMI default)
 - `ec2_security_group_id` - Security group ID (required for [SSH access], should expose inbound port 22)
 - `max_instance_lifetime` - Maximum instance lifetime in minutes before automatic shutdown (falls back to `vars.MAX_INSTANCE_LIFETIME`, default: 360 = 6 hours; generally should not be relevant, instances shut down within 1-2mins of jobs completing)
@@ -204,7 +201,7 @@ jobs:
     steps:
       - run: echo "Evaluating results"
 ```
-(see also [demo-job-seq], [demo-archs], [demo-matrix-wide])
+(see also demo workflows in [`.github/workflows/`](.github/workflows/))
 
 ### Termination logic <a id="termination"></a>
 
@@ -677,9 +674,6 @@ Here's a diff porting [ec2-github-runner][machulav/ec2-github-runner]'s README [
 ```
 
 [`runner.yml`]: .github/workflows/runner.yml
-[demo-job-seq]: .github/workflows/demo-job-seq.yml
-[demo-archs]: .github/workflows/demo-archs.yml
-[demo-matrix-wide]: .github/workflows/demo-matrix-wide.yml
 [aws-actions/configure-aws-credentials]: https://github.com/aws-actions/configure-aws-credentials
 [hooks]: https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/run-scripts
 [omsf/start-aws-gha-runner]: https://github.com/omsf/start-aws-gha-runner
