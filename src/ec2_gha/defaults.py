@@ -11,7 +11,7 @@ RUNNER_REGISTRATION_TIMEOUT = "300"  # 5 minutes (in seconds)
 EC2_INSTANCE_TYPE = "t3.medium"
 
 # Instance naming default template
-INSTANCE_NAME = "$repo/$name#$run_number"
+INSTANCE_NAME = "$repo/$name#$run"
 
 # Default instance count
 INSTANCE_COUNT = 1

@@ -51,9 +51,8 @@ inputs:
     required: false
     default: "1"
   instance_name:
-    description: "Name tag template for EC2 instances. Uses Python string.Template format with variables: $repo, $name (workflow filename stem), $workflow (full workflow name), $ref, $run_number, $idx (0-based instance index for multi-instance launches)"
+    description: "Name tag template for EC2 instances. Uses Python string.Template format with variables: $repo, $name (workflow filename stem), $workflow (full workflow name), $ref, $run (number), $idx (0-based instance index for multi-instance launches). Default: $repo/$name#$run (or $repo/$name#$run $idx for multi-instance)"
     required: false
-    default: "$repo/$name#$run_number"
   max_instance_lifetime:
     description: "Maximum instance lifetime in minutes before automatic shutdown (default 360 = 6 hours)"
     required: false

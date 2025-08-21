@@ -121,7 +121,7 @@ The runner uses a polling-based approach to determine when to terminate:
 
 ### AWS Resource Tagging
 By default, launched EC2 instances are Tagged with:
-- `Name`: `f"{repo}/{workflow}#{run_number}"`
+- `Name`: `f"{repo}/{workflow}#{run}"`
 - `Repository`: GitHub repository name
 - `Workflow`: Workflow name
 - `URL`: Direct link to the GitHub Actions run

@@ -144,10 +144,10 @@ class StartAWS(CreateCloudInstance):
             template_vars["name"] = "unknown"
             template_vars["ref"] = "unknown"
 
-        # Get run number - set both run_number and run as alias
+        # `$run` (number)
         run_num = environ.get("GITHUB_RUN_NUMBER", "unknown")
-        template_vars["run_number"] = run_num
-        template_vars["run"] = run_num  # Alias for shorter naming
+        template_vars["run"] = run_num
+        template_vars["run_number"] = run_num  # Legacy alias
 
         # Add instance index if provided (for multi-instance launches)
         if idx is not None:
@@ -357,6 +357,12 @@ class StartAWS(CreateCloudInstance):
         # Determine which tokens to use
         tokens_to_use = self.grouped_runner_tokens if self.grouped_runner_tokens else [[t] for t in self.gh_runner_tokens]
 
+        # Determine default instance_name based on instance count
+        instance_count = len(tokens_to_use)
+        default_instance_name = "$repo/$name#$run"
+        if instance_count > 1:
+            default_instance_name = "$repo/$name#$run $idx"
+
         for idx, instance_tokens in enumerate(tokens_to_use):
             # Generate labels and tokens for all runners on this instance
             runner_configs = []
@@ -376,13 +382,12 @@ class StartAWS(CreateCloudInstance):
             runner_labels = "|".join(config["labels"] for config in runner_configs)
 
             # Generate instance name using template variables
-            if self.instance_name:
-                from string import Template
-                template_vars = self._get_template_vars(idx)
-                name_template = Template(self.instance_name)
-                instance_name_value = name_template.safe_substitute(**template_vars)
-            else:
-                instance_name_value = ""
+            from string import Template
+            template_vars = self._get_template_vars(idx)
+            # Use provided instance_name or the smart default
+            name_pattern = self.instance_name if self.instance_name else default_instance_name
+            name_template = Template(name_pattern)
+            instance_name_value = name_template.safe_substitute(**template_vars)
 
             user_data_params = {
                 "cloudwatch_logs_group": self.cloudwatch_logs_group,
