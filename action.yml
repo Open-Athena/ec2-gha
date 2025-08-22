@@ -4,14 +4,8 @@ runs:
   using: "docker"
   image: "Dockerfile"
 inputs:
-  region:
-    description: "AWS region for EC2 instances (falls back to vars.AWS_REGION, then us-east-1)"
-    required: false
-  subnet_id:
-    description: "AWS subnet ID (will use the account default subnet if not specified)"
-    required: false
-  tags:
-    description: "AWS tags to apply to EC2 instances (JSON array format)"
+  ami:
+    description: "AWS AMI ID to use (required - must be provided via input or vars.EC2_IMAGE_ID)"
     required: false
   cloudwatch_logs_group:
     description: "CloudWatch Logs group name for streaming runner logs (leave empty to disable)"
@@ -19,11 +13,18 @@ inputs:
   debug:
     description: "Enable debug output (set -x) in runner setup script"
     required: false
+  extra_gh_labels:
+    description: "Any extra GitHub labels to tag your runners with. Passed as a comma-separated list with no spaces"
+    required: false
   homedir:
     description: "Home directory on the AWS instance (falls back to vars.EC2_HOME_DIR, then auto-detection)"
     required: false
-  ami:
-    description: "AWS AMI ID to use (required - must be provided via input or vars.EC2_IMAGE_ID)"
+  instance_count:
+    description: "The number of instances to create, defaults to 1"
+    required: false
+    default: "1"
+  instance_name:
+    description: "Name tag template for EC2 instances. Uses Python string.Template format with variables: $repo, $name (workflow filename stem), $workflow (full workflow name), $ref, $run (number), $idx (0-based instance index for multi-instance launches). Default: $repo/$name#$run (or $repo/$name#$run $idx for multi-instance)"
     required: false
   instance_profile:
     description: "Instance profile name to attach to launched EC2 instance (required for CloudWatch logging)"
@@ -34,30 +35,17 @@ inputs:
   key_name:
     description: "Name of an EC2 key pair to use for SSH access (falls back to vars.EC2_KEY_NAME)"
     required: false
-  root_device_size:
-    description: "Root device size in GB (0 = use AMI default)"
-    required: false
-  security_group_id:
-    description: "AWS security group ID (falls back to vars.EC2_SECURITY_GROUP_ID)"
-    required: false
-  userdata:
-    description: "Additional userdata script to run on instance startup (before runner starts)"
-    required: false
-  extra_gh_labels:
-    description: "Any extra GitHub labels to tag your runners with. Passed as a comma-separated list with no spaces"
-    required: false
-  instance_count:
-    description: "The number of instances to create, defaults to 1"
-    required: false
-    default: "1"
-  instance_name:
-    description: "Name tag template for EC2 instances. Uses Python string.Template format with variables: $repo, $name (workflow filename stem), $workflow (full workflow name), $ref, $run (number), $idx (0-based instance index for multi-instance launches). Default: $repo/$name#$run (or $repo/$name#$run $idx for multi-instance)"
-    required: false
   max_instance_lifetime:
     description: "Maximum instance lifetime in minutes before automatic shutdown (default 360 = 6 hours)"
     required: false
+  region:
+    description: "AWS region for EC2 instances (falls back to vars.AWS_REGION, then us-east-1)"
+    required: false
   repo:
     description: "The repo to run against. Will use the current repo if not specified."
+    required: false
+  root_device_size:
+    description: "Root device size in GB (0 = use AMI default)"
     required: false
   runner_grace_period:
     description: "Grace period in seconds before terminating instance after last job completes (falls back to vars.RUNNER_GRACE_PERIOD, then 60)"
@@ -75,8 +63,20 @@ inputs:
     description: "Number of runners to register per instance (each in separate directories to allow concurrent jobs)"
     required: false
     default: "1"
+  security_group_id:
+    description: "AWS security group ID (falls back to vars.EC2_SECURITY_GROUP_ID)"
+    required: false
   ssh_pubkey:
     description: "SSH public key to add to authorized_keys for debugging access"
+    required: false
+  subnet_id:
+    description: "AWS subnet ID (will use the account default subnet if not specified)"
+    required: false
+  tags:
+    description: "AWS tags to apply to EC2 instances (JSON array format)"
+    required: false
+  userdata:
+    description: "Additional userdata script to run on instance startup (before runner starts)"
     required: false
 outputs:
   mtx:

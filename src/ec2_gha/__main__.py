@@ -31,31 +31,31 @@ def main():
 
     builder = (
         EnvVarBuilder(env)
-        .update_state("INPUT_SUBNET_ID", "subnet_id")
-        .update_state("INPUT_TAGS", "tags", is_json=True)
+        .update_state("INPUT_AMI", "image_id")
         .update_state("INPUT_CLOUDWATCH_LOGS_GROUP", "cloudwatch_logs_group")
         .update_state("INPUT_DEBUG", "debug")
+        .update_state("INPUT_EXTRA_GH_LABELS", "labels")
         .update_state("INPUT_HOMEDIR", "home_dir")
-        .update_state("INPUT_AMI", "image_id")
+        .update_state("INPUT_INSTANCE_COUNT", "instance_count", type_hint=int)
+        .update_state("INPUT_INSTANCE_NAME", "instance_name")
         .update_state("INPUT_INSTANCE_PROFILE", "iam_instance_profile")
         .update_state("INPUT_INSTANCE_TYPE", "instance_type")
         .update_state("INPUT_KEY_NAME", "key_name")
-        .update_state("INPUT_ROOT_DEVICE_SIZE", "root_device_size", type_hint=int)
-        .update_state("INPUT_SECURITY_GROUP_ID", "security_group_id")
-        .update_state("INPUT_USERDATA", "userdata")
-        .update_state("INPUT_EXTRA_GH_LABELS", "labels")
-        .update_state("INPUT_INSTANCE_COUNT", "instance_count", type_hint=int)
-        .update_state("INPUT_INSTANCE_NAME", "instance_name")
         .update_state("INPUT_MAX_INSTANCE_LIFETIME", "max_instance_lifetime")
-        .update_state("INPUT_RUNNER_GRACE_PERIOD", "runner_grace_period")
-        .update_state("INPUT_RUNNER_INITIAL_GRACE_PERIOD", "runner_initial_grace_period")
-        .update_state("INPUT_RUNNER_POLL_INTERVAL", "runner_poll_interval")
-        .update_state("INPUT_RUNNERS_PER_INSTANCE", "runners_per_instance", type_hint=int)
-        .update_state("INPUT_SSH_PUBKEY", "ssh_pubkey")
         .update_state("AWS_REGION", "region_name")        # default
         .update_state("INPUT_REGION", "region_name")  # input override
         .update_state("GITHUB_REPOSITORY", "repo")        # default
         .update_state("INPUT_REPO", "repo")               # input override
+        .update_state("INPUT_ROOT_DEVICE_SIZE", "root_device_size", type_hint=int)
+        .update_state("INPUT_RUNNER_GRACE_PERIOD", "runner_grace_period")
+        .update_state("INPUT_RUNNER_INITIAL_GRACE_PERIOD", "runner_initial_grace_period")
+        .update_state("INPUT_RUNNER_POLL_INTERVAL", "runner_poll_interval")
+        .update_state("INPUT_RUNNERS_PER_INSTANCE", "runners_per_instance", type_hint=int)
+        .update_state("INPUT_SECURITY_GROUP_ID", "security_group_id")
+        .update_state("INPUT_SSH_PUBKEY", "ssh_pubkey")
+        .update_state("INPUT_SUBNET_ID", "subnet_id")
+        .update_state("INPUT_TAGS", "tags", is_json=True)
+        .update_state("INPUT_USERDATA", "userdata")
     )
     params = builder.params
     repo = params["repo"]

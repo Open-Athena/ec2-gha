@@ -43,12 +43,12 @@ def aws_params_user_data():
         "repo": "omsf-eco-infra/awsinfratesting",
         "runner_grace_period": "61",
         "runner_initial_grace_period": "181",
-        "runner_poll_interval": "11",
-        "runner_release": "test.tar.gz",
-        "runner_registration_timeout": "300",
-        "runners_per_instance": "1",
-        "runner_tokens": "test",  # Space-delimited tokens
         "runner_labels": "label",  # Pipe-delimited labels
+        "runner_poll_interval": "11",
+        "runner_registration_timeout": "300",
+        "runner_release": "test.tar.gz",
+        "runner_tokens": "test",  # Space-delimited tokens
+        "runners_per_instance": "1",
         "script": "echo 'Hello, World!'",
         "ssh_pubkey": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host",
         "userdata": "",

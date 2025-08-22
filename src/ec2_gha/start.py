@@ -30,12 +30,18 @@ class StartAWS(CreateCloudInstance):
         The repository to use.
     cloudwatch_logs_group : str
         CloudWatch Logs group name for streaming runner logs. Defaults to an empty string.
+    debug : str
+        Enable debug output in runner setup script. Defaults to an empty string.
     gh_runner_tokens : list[str]
         A list of GitHub runner tokens. Defaults to an empty list.
+    grouped_runner_tokens : list[list[str]]
+        Grouped tokens for multi-runner instances. Defaults to an empty list.
     home_dir : str
         The home directory of the user. If not provided, will be inferred from the AMI.
     iam_instance_profile : str
         The name of the IAM role to use. Defaults to an empty string.
+    instance_name : str
+        Name tag template for EC2 instances. Defaults to an empty string.
     key_name : str
         The name of the EC2 key pair to use for SSH access. Defaults to an empty string.
     labels : str
@@ -44,12 +50,14 @@ class StartAWS(CreateCloudInstance):
         Maximum instance lifetime in minutes before automatic shutdown. Defaults to "360" (6 hours).
     root_device_size : int
         The size of the root device. Defaults to 0 which uses the default.
-    runner_initial_grace_period : str
-        Grace period in seconds before terminating if no jobs have started. Defaults to "180".
     runner_grace_period : str
         Grace period in seconds before terminating instance after last job completes. Defaults to "60".
+    runner_initial_grace_period : str
+        Grace period in seconds before terminating if no jobs have started. Defaults to "180".
     runner_poll_interval : str
         How often (in seconds) to check termination conditions. Defaults to "10".
+    runner_release : str
+        The runner release URL or path. Defaults to an empty string.
     runners_per_instance : int
         Number of runners to register per instance. Defaults to 1.
     script : str
@@ -67,10 +75,12 @@ class StartAWS(CreateCloudInstance):
 
     """
 
+    # Required fields first (no defaults)
     image_id: str
     instance_type: str
     region_name: str
     repo: str
+    # Optional fields with defaults (alphabetized)
     cloudwatch_logs_group: str = ""
     debug: str = ""
     gh_runner_tokens: list[str] = field(default_factory=list)
@@ -85,8 +95,8 @@ class StartAWS(CreateCloudInstance):
     runner_grace_period: str = "60"
     runner_initial_grace_period: str = "180"
     runner_poll_interval: str = "10"
-    runners_per_instance: int = 1
     runner_release: str = ""
+    runners_per_instance: int = 1
     script: str = ""
     security_group_id: str = ""
     ssh_pubkey: str = ""
@@ -171,11 +181,11 @@ class StartAWS(CreateCloudInstance):
         """
         params = {
             "ImageId": self.image_id,
-            "InstanceType": self.instance_type,
-            "MinCount": 1,
-            "MaxCount": 1,
-            "UserData": self._build_user_data(**user_data_params),
             "InstanceInitiatedShutdownBehavior": "terminate",
+            "InstanceType": self.instance_type,
+            "MaxCount": 1,
+            "MinCount": 1,
+            "UserData": self._build_user_data(**user_data_params),
         }
         if self.subnet_id != "":
             params["SubnetId"] = self.subnet_id
@@ -392,21 +402,21 @@ class StartAWS(CreateCloudInstance):
             user_data_params = {
                 "cloudwatch_logs_group": self.cloudwatch_logs_group,
                 "debug": self.debug,
-                "github_workflow": environ.get("GITHUB_WORKFLOW", ""),
                 "github_run_id": environ.get("GITHUB_RUN_ID", ""),
                 "github_run_number": environ.get("GITHUB_RUN_NUMBER", ""),
+                "github_workflow": environ.get("GITHUB_WORKFLOW", ""),
                 "homedir": self.home_dir,
                 "instance_name": instance_name_value,  # Add the generated instance name
                 "max_instance_lifetime": self.max_instance_lifetime,
                 "repo": self.repo,
                 "runner_grace_period": self.runner_grace_period,
                 "runner_initial_grace_period": self.runner_initial_grace_period,
+                "runner_labels": runner_labels,  # Pipe-delimited labels
                 "runner_poll_interval": self.runner_poll_interval,
                 "runner_registration_timeout": environ.get("INPUT_RUNNER_REGISTRATION_TIMEOUT", "").strip() or RUNNER_REGISTRATION_TIMEOUT,
                 "runner_release": self.runner_release,
-                "runners_per_instance": str(self.runners_per_instance),
                 "runner_tokens": runner_tokens,  # Space-delimited tokens
-                "runner_labels": runner_labels,  # Pipe-delimited labels
+                "runners_per_instance": str(self.runners_per_instance),
                 "script": self.script,
                 "ssh_pubkey": self.ssh_pubkey,
                 "userdata": self.userdata,
