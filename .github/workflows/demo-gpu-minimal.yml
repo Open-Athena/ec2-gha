@@ -11,8 +11,8 @@ jobs:
     uses: ./.github/workflows/runner.yml
     secrets: inherit
     with:
-      ec2_instance_type: g4dn.xlarge       # ≈$0.56/hr GPU instance: https://instances.vantage.sh/aws/ec2/g4dn.xlarge
-      ec2_image_id: ami-00096836009b16a22  # Deep Learning OSS Nvidia Driver AMI GPU PyTorch 2.4.1 (Ubuntu 22.04) 20250302
+      instance_type: g4dn.xlarge       # ≈$0.56/hr GPU instance: https://instances.vantage.sh/aws/ec2/g4dn.xlarge
+      ami: ami-00096836009b16a22  # Deep Learning OSS Nvidia Driver AMI GPU PyTorch 2.4.1 (Ubuntu 22.04) 20250302
   gpu-test:
     needs: ec2
     runs-on: ${{ needs.ec2.outputs.id }}

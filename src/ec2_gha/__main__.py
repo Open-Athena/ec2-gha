@@ -31,18 +31,18 @@ def main():
 
     builder = (
         EnvVarBuilder(env)
-        .update_state("INPUT_AWS_SUBNET_ID", "subnet_id")
-        .update_state("INPUT_AWS_TAGS", "tags", is_json=True)
+        .update_state("INPUT_SUBNET_ID", "subnet_id")
+        .update_state("INPUT_TAGS", "tags", is_json=True)
         .update_state("INPUT_CLOUDWATCH_LOGS_GROUP", "cloudwatch_logs_group")
         .update_state("INPUT_DEBUG", "debug")
-        .update_state("INPUT_EC2_HOME_DIR", "home_dir")
-        .update_state("INPUT_EC2_IMAGE_ID", "image_id")
-        .update_state("INPUT_EC2_INSTANCE_PROFILE", "iam_instance_profile")
-        .update_state("INPUT_EC2_INSTANCE_TYPE", "instance_type")
-        .update_state("INPUT_EC2_KEY_NAME", "key_name")
-        .update_state("INPUT_EC2_ROOT_DEVICE_SIZE", "root_device_size", type_hint=int)
-        .update_state("INPUT_EC2_SECURITY_GROUP_ID", "security_group_id")
-        .update_state("INPUT_EC2_USERDATA", "userdata")
+        .update_state("INPUT_HOMEDIR", "home_dir")
+        .update_state("INPUT_AMI", "image_id")
+        .update_state("INPUT_INSTANCE_PROFILE", "iam_instance_profile")
+        .update_state("INPUT_INSTANCE_TYPE", "instance_type")
+        .update_state("INPUT_KEY_NAME", "key_name")
+        .update_state("INPUT_ROOT_DEVICE_SIZE", "root_device_size", type_hint=int)
+        .update_state("INPUT_SECURITY_GROUP_ID", "security_group_id")
+        .update_state("INPUT_USERDATA", "userdata")
         .update_state("INPUT_EXTRA_GH_LABELS", "labels")
         .update_state("INPUT_INSTANCE_COUNT", "instance_count", type_hint=int)
         .update_state("INPUT_INSTANCE_NAME", "instance_name")
@@ -53,7 +53,7 @@ def main():
         .update_state("INPUT_RUNNERS_PER_INSTANCE", "runners_per_instance", type_hint=int)
         .update_state("INPUT_SSH_PUBKEY", "ssh_pubkey")
         .update_state("AWS_REGION", "region_name")        # default
-        .update_state("INPUT_AWS_REGION", "region_name")  # input override
+        .update_state("INPUT_REGION", "region_name")  # input override
         .update_state("GITHUB_REPOSITORY", "repo")        # default
         .update_state("INPUT_REPO", "repo")               # input override
     )
@@ -79,7 +79,7 @@ def main():
 
     # image_id is required - must be provided via input or vars
     if not params.get("image_id"):
-        raise Exception("EC2 AMI ID (ec2_image_id) must be provided via input or vars.EC2_IMAGE_ID")
+        raise Exception("EC2 AMI ID (ami) must be provided via input or vars.EC2_IMAGE_ID")
     # home_dir will be set to AUTO in start.py if not provided
 
     gh = GitHubInstance(token=token, repo=repo)

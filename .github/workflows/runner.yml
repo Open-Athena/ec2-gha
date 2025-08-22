@@ -20,17 +20,17 @@ on:
         description: "GitHub token with permissions to manage self-hosted runners"
         required: true
     inputs:
-      action_ref:
+      self_ref:
         description: "ec2-gha Git ref (branch/tag/SHA) to checkout"
         required: false
         type: string
         default: "rw/hooks"
-      aws_region:
+      region:
         description: "AWS region for EC2 instances (falls back to vars.AWS_REGION, then us-east-1)"
         required: false
         type: string
         default: "us-east-1"
-      aws_tags:
+      tags:
         description: "AWS tags to apply to EC2 instances (JSON array format)"
         required: false
         type: string
@@ -43,40 +43,40 @@ on:
         required: false
         type: boolean
         default: false
-      ec2_home_dir:
+      homedir:
         description: "Home directory on the AWS instance (falls back to vars.EC2_HOME_DIR, then auto-detection)"
         required: false
         type: string
-      ec2_image_id:
+      ami:
         description: "AWS AMI ID to use (required - must be provided via input or vars.EC2_IMAGE_ID)"
         required: false
         type: string
-      ec2_instance_profile:
+      instance_profile:
         description: "Instance profile name to attach to launched EC2 instance (required for CloudWatch logging)"
         required: false
         type: string
-      ec2_instance_type:
+      instance_type:
         description: "AWS instance type (falls back to vars.EC2_INSTANCE_TYPE, then t3.medium)"
         required: false
         type: string
-      ec2_key_name:
+      key_name:
         description: "Name of an EC2 key pair to use for SSH access (falls back to vars.EC2_KEY_NAME)"
         required: false
         type: string
-      ec2_launch_role:
+      launch_role:
         description: "AWS role ARN to assume for EC2 operations (falls back to vars.EC2_LAUNCH_ROLE)"
         required: false
         type: string
-      ec2_root_device_size:
+      root_device_size:
         description: "Root device size in GB (0 = use AMI default)"
         required: false
         type: string
         default: "0"
-      ec2_security_group_id:
+      security_group_id:
         description: "AWS security group ID (falls back to vars.EC2_SECURITY_GROUP_ID)"
         required: false
         type: string
-      ec2_userdata:
+      userdata:
         description: "Additional userdata script to run on instance startup (before runner starts)"
         required: false
         type: string
@@ -135,7 +135,7 @@ permissions:
 
 jobs:
   launch:
-    name: ${{ inputs.name || format('Launch {0}', inputs.ec2_instance_type || vars.EC2_INSTANCE_TYPE) }}
+    name: ${{ inputs.name || format('Launch {0}', inputs.instance_type || vars.EC2_INSTANCE_TYPE) }}
     runs-on: ubuntu-latest
     outputs:
       id: ${{ steps.aws-start.outputs.label }}
@@ -143,9 +143,9 @@ jobs:
     steps:
       - name: Check EC2_LAUNCH_ROLE configuration
         run: |
-          if [ -z "${{ inputs.ec2_launch_role || vars.EC2_LAUNCH_ROLE }}" ]; then
+          if [ -z "${{ inputs.launch_role || vars.EC2_LAUNCH_ROLE }}" ]; then
             echo "ERROR: EC2_LAUNCH_ROLE must be provided either as an input or as a repository/organization variable"
-            echo "Please set 'ec2_launch_role' input or 'EC2_LAUNCH_ROLE' variable"
+            echo "Please set 'launch_role' input or 'EC2_LAUNCH_ROLE' variable"
             exit 1
           fi
 
@@ -153,31 +153,31 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Open-Athena/ec2-gha
-          ref: ${{ inputs.action_ref }}
+          ref: ${{ inputs.self_ref }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ inputs.ec2_launch_role || vars.EC2_LAUNCH_ROLE }}
+          role-to-assume: ${{ inputs.launch_role || vars.EC2_LAUNCH_ROLE }}
           role-session-name: github-actions-session
-          aws-region: ${{ inputs.aws_region }}
+          aws-region: ${{ inputs.region }}
 
       - name: Create cloud runner
         id: aws-start
         uses: ./
         with:
-          aws_region: ${{ inputs.aws_region || vars.AWS_REGION }}
-          aws_tags: ${{ inputs.aws_tags }}
+          region: ${{ inputs.region || vars.AWS_REGION }}
+          tags: ${{ inputs.tags }}
           cloudwatch_logs_group: ${{ inputs.cloudwatch_logs_group || vars.CLOUDWATCH_LOGS_GROUP }}
           debug: ${{ inputs.debug }}
-          ec2_home_dir: ${{ inputs.ec2_home_dir || vars.EC2_HOME_DIR }}
-          ec2_image_id: ${{ inputs.ec2_image_id || vars.EC2_IMAGE_ID }}
-          ec2_instance_profile: ${{ inputs.ec2_instance_profile || vars.EC2_INSTANCE_PROFILE }}
-          ec2_instance_type: ${{ inputs.ec2_instance_type || vars.EC2_INSTANCE_TYPE }}
-          ec2_key_name: ${{ inputs.ec2_key_name || vars.EC2_KEY_NAME }}
-          ec2_root_device_size: ${{ inputs.ec2_root_device_size }}
-          ec2_security_group_id: ${{ inputs.ec2_security_group_id || vars.EC2_SECURITY_GROUP_ID }}
-          ec2_userdata: ${{ inputs.ec2_userdata }}
+          homedir: ${{ inputs.homedir || vars.EC2_HOME_DIR }}
+          ami: ${{ inputs.ami || vars.EC2_IMAGE_ID }}
+          instance_profile: ${{ inputs.instance_profile || vars.EC2_INSTANCE_PROFILE }}
+          instance_type: ${{ inputs.instance_type || vars.EC2_INSTANCE_TYPE }}
+          key_name: ${{ inputs.key_name || vars.EC2_KEY_NAME }}
+          root_device_size: ${{ inputs.root_device_size }}
+          security_group_id: ${{ inputs.security_group_id || vars.EC2_SECURITY_GROUP_ID }}
+          userdata: ${{ inputs.userdata }}
           instance_count: ${{ inputs.instance_count }}
           instance_name: ${{ inputs.instance_name }}
           max_instance_lifetime: ${{ inputs.max_instance_lifetime || vars.MAX_INSTANCE_LIFETIME }}

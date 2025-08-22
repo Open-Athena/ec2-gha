@@ -4,13 +4,13 @@ runs:
   using: "docker"
   image: "Dockerfile"
 inputs:
-  aws_region:
+  region:
     description: "AWS region for EC2 instances (falls back to vars.AWS_REGION, then us-east-1)"
     required: false
-  aws_subnet_id:
+  subnet_id:
     description: "AWS subnet ID (will use the account default subnet if not specified)"
     required: false
-  aws_tags:
+  tags:
     description: "AWS tags to apply to EC2 instances (JSON array format)"
     required: false
   cloudwatch_logs_group:
@@ -19,28 +19,28 @@ inputs:
   debug:
     description: "Enable debug output (set -x) in runner setup script"
     required: false
-  ec2_home_dir:
+  homedir:
     description: "Home directory on the AWS instance (falls back to vars.EC2_HOME_DIR, then auto-detection)"
     required: false
-  ec2_image_id:
+  ami:
     description: "AWS AMI ID to use (required - must be provided via input or vars.EC2_IMAGE_ID)"
     required: false
-  ec2_instance_profile:
+  instance_profile:
     description: "Instance profile name to attach to launched EC2 instance (required for CloudWatch logging)"
     required: false
-  ec2_instance_type:
+  instance_type:
     description: "AWS instance type (falls back to vars.EC2_INSTANCE_TYPE, then t3.medium)"
     required: false
-  ec2_key_name:
+  key_name:
     description: "Name of an EC2 key pair to use for SSH access (falls back to vars.EC2_KEY_NAME)"
     required: false
-  ec2_root_device_size:
+  root_device_size:
     description: "Root device size in GB (0 = use AMI default)"
     required: false
-  ec2_security_group_id:
+  security_group_id:
     description: "AWS security group ID (falls back to vars.EC2_SECURITY_GROUP_ID)"
     required: false
-  ec2_userdata:
+  userdata:
     description: "Additional userdata script to run on instance startup (before runner starts)"
     required: false
   extra_gh_labels:

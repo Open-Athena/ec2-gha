@@ -81,8 +81,8 @@ jobs:
     uses: ./.github/workflows/runner.yml
     with:
       name: 🚀
-      ec2_instance_type: ${{ inputs.type }}
-      ec2_image_id: ${{ inputs.ami }}
+      instance_type: ${{ inputs.type }}
+      ami: ${{ inputs.ami }}
       debug: ${{ inputs.debug }}
       instance_name: ${{ inputs.instance_name || 'debug/$name#$run' }}
       # `workflow_dispatch has higher defaults for these; revert to original defaults for `workflow_call`
