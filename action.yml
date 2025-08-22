@@ -7,7 +7,7 @@ inputs:
   ami:
     description: "AWS AMI ID to use (required - must be provided via input or vars.EC2_IMAGE_ID)"
     required: false
-  cloudwatch_logs_group:
+  cloudwatch_group:
     description: "CloudWatch Logs group name for streaming runner logs (leave empty to disable)"
     required: false
   debug:

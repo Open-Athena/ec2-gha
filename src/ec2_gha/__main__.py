@@ -32,7 +32,7 @@ def main():
     builder = (
         EnvVarBuilder(env)
         .update_state("INPUT_AMI", "image_id")
-        .update_state("INPUT_CLOUDWATCH_LOGS_GROUP", "cloudwatch_logs_group")
+        .update_state("INPUT_CLOUDWATCH_GROUP", "cloudwatch_group")
         .update_state("INPUT_DEBUG", "debug")
         .update_state("INPUT_EXTRA_GH_LABELS", "labels")
         .update_state("INPUT_HOMEDIR", "home_dir")

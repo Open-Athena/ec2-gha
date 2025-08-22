@@ -24,7 +24,7 @@ on:
         description: "AWS AMI ID to use (required - must be provided via input or vars.EC2_IMAGE_ID)"
         required: false
         type: string
-      cloudwatch_logs_group:
+      cloudwatch_group:
         description: "CloudWatch Logs group name for streaming runner logs (leave empty to disable)"
         required: false
         type: string
@@ -171,7 +171,7 @@ jobs:
         uses: ./
         with:
           ami: ${{ inputs.ami || vars.EC2_IMAGE_ID }}
-          cloudwatch_logs_group: ${{ inputs.cloudwatch_logs_group || vars.CLOUDWATCH_LOGS_GROUP }}
+          cloudwatch_group: ${{ inputs.cloudwatch_group || vars.CLOUDWATCH_LOGS_GROUP }}
           debug: ${{ inputs.debug }}
           homedir: ${{ inputs.homedir || vars.EC2_HOME_DIR }}
           instance_count: ${{ inputs.instance_count }}

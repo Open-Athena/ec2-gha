@@ -33,7 +33,7 @@ def aws(base_aws_params):
 def aws_params_user_data():
     """User data params for AWS params tests"""
     return {
-        "cloudwatch_logs_group": "",  # Empty = disabled
+        "cloudwatch_group": "",  # Empty = disabled
         "debug": "",  # Empty = disabled
         "github_run_id": "16725250800",
         "github_run_number": "42",
@@ -64,7 +64,7 @@ def test_build_user_data(aws, aws_params_user_data, snapshot):
 def test_build_user_data_with_cloudwatch(aws, aws_params_user_data, snapshot):
     """Test user data with CloudWatch Logs enabled using snapshot testing"""
     params = aws_params_user_data | {
-        "cloudwatch_logs_group": "/aws/ec2/github-runners",
+        "cloudwatch_group": "/aws/ec2/github-runners",
         "runner_grace_period": "61",
         "runner_initial_grace_period": "181",
         "runner_poll_interval": "11",
@@ -82,7 +82,7 @@ def test_build_user_data_missing_params(aws):
         "repo": "omsf-eco-infra/awsinfratesting",
         "script": "echo 'Hello, World!'",
         "token": "test",
-        "cloudwatch_logs_group": "",
+        "cloudwatch_group": "",
         # Missing: labels, runner_release
     }
     with pytest.raises(Exception):

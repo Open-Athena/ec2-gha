@@ -119,7 +119,7 @@ log "Setting up maximum lifetime timeout: $${MAX_LIFETIME_MINUTES} minutes"
 nohup bash -c "sleep $${MAX_LIFETIME_MINUTES}m && echo '[$$(date)] Maximum lifetime reached' && shutdown -h now" > /var/log/max-lifetime.log 2>&1 &
 
 # Configure CloudWatch Logs if a log group is specified
-if [ "$cloudwatch_logs_group" != "" ]; then
+if [ "$cloudwatch_group" != "" ]; then
   log "Installing CloudWatch agent"
   # Use a subshell to prevent CloudWatch failures from stopping the entire script
   (
@@ -142,7 +142,7 @@ if [ "$cloudwatch_logs_group" != "" ]; then
     fi
     # Build CloudWatch config with factored strings
     P='"file_path":'
-    G=',"log_group_name":"$cloudwatch_logs_group","log_stream_name":"{instance_id}/'
+    G=',"log_group_name":"$cloudwatch_group","log_stream_name":"{instance_id}/'
     Z='","timezone":"UTC"}'
     H="$$homedir"
     cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF

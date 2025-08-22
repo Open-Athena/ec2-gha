@@ -28,7 +28,7 @@ class StartAWS(CreateCloudInstance):
         The name of the region to use.
     repo : str
         The repository to use.
-    cloudwatch_logs_group : str
+    cloudwatch_group : str
         CloudWatch Logs group name for streaming runner logs. Defaults to an empty string.
     debug : str
         Enable debug output in runner setup script. Defaults to an empty string.
@@ -81,7 +81,7 @@ class StartAWS(CreateCloudInstance):
     region_name: str
     repo: str
     # Optional fields with defaults (alphabetized)
-    cloudwatch_logs_group: str = ""
+    cloudwatch_group: str = ""
     debug: str = ""
     gh_runner_tokens: list[str] = field(default_factory=list)
     grouped_runner_tokens: list[list[str]] = field(default_factory=list)
@@ -400,7 +400,7 @@ class StartAWS(CreateCloudInstance):
             instance_name_value = name_template.safe_substitute(**template_vars)
 
             user_data_params = {
-                "cloudwatch_logs_group": self.cloudwatch_logs_group,
+                "cloudwatch_group": self.cloudwatch_group,
                 "debug": self.debug,
                 "github_run_id": environ.get("GITHUB_RUN_ID", ""),
                 "github_run_number": environ.get("GITHUB_RUN_NUMBER", ""),
