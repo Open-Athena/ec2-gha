@@ -3,7 +3,7 @@ name = "ec2_gha"
 version = "1.0.0"
 description = "Start an AWS GitHub Actions Runner"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 authors = [{ name = "Ethan Holz", email = "ethan.holz@omsf.io" }]
 dependencies = ["boto3", "gha_runner @ git+https://github.com/Open-Athena/gha-runner.git@v1"]
 
