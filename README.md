@@ -180,7 +180,7 @@ jobs:
     uses: Open-Athena/ec2-gha/.github/workflows/runner.yml@main
     secrets: inherit
     with:
-      runner_grace_period: "120"  # 2 minutes between jobs
+      runner_grace_period: "120"  # Max idle time before termination (seconds)
 
   prepare:
     needs: ec2
