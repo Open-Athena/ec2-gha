@@ -1,7 +1,7 @@
 """Default values for ec2-gha configuration."""
 
 # Instance lifetime and timing defaults
-MAX_INSTANCE_LIFETIME = "360"  # 6 hours (in minutes)
+MAX_INSTANCE_LIFETIME = "120"  # 2 hours (in minutes)
 RUNNER_GRACE_PERIOD = "60"     # 1 minute (in seconds)
 RUNNER_INITIAL_GRACE_PERIOD = "180"  # 3 minutes (in seconds)
 RUNNER_POLL_INTERVAL = "10"    # 10 seconds
