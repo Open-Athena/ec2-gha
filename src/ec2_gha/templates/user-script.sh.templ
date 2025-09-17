@@ -239,6 +239,17 @@ source $$B/runner-common.sh
 A="$$V-last-activity"
 J="$$V-jobs"
 H="$$V-has-run-job"
+
+# Check if any runners are actually running
+RUNNER_PROCS=\$$(pgrep -f "Runner.Listener" | wc -l)
+if [ \$$RUNNER_PROCS -eq 0 ]; then
+  # No runner processes, check if we have stale job files
+  if ls \$$J/*.job 2>/dev/null | grep -q .; then
+    log "WARNING: Found job files but no runner processes - cleaning up stale jobs"
+    rm -f \$$J/*.job
+  fi
+fi
+
 [ ! -f "\$$A" ] && touch "\$$A"
 L=\$$(stat -c %Y "\$$A" 2>/dev/null || echo 0)
 N=\$$(date +%s)
