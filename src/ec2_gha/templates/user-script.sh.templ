@@ -116,7 +116,25 @@ log "Instance metadata: Type=$${INSTANCE_TYPE} ID=$${INSTANCE_ID} Region=$${REGI
 # Set up maximum lifetime timeout - instance will terminate after this time regardless of job status
 MAX_LIFETIME_MINUTES=$max_instance_lifetime
 log "Setting up maximum lifetime timeout: $${MAX_LIFETIME_MINUTES} minutes"
-nohup bash -c "sleep $${MAX_LIFETIME_MINUTES}m && echo '[$$(date)] Maximum lifetime reached' && shutdown -h now" > /var/log/max-lifetime.log 2>&1 &
+# Use ; instead of && so shutdown runs even if echo fails (e.g., disk full)
+# Try multiple shutdown methods as fallbacks
+nohup bash -c "
+  sleep $${MAX_LIFETIME_MINUTES}m
+  echo '[$$(date)] Maximum lifetime reached' 2>/dev/null || true
+  # Try normal shutdown
+  shutdown -h now 2>/dev/null || {
+    # If shutdown fails, try halt
+    halt -f 2>/dev/null || {
+      # If halt fails, try sysrq if available (Linux only)
+      if [ -w /proc/sysrq-trigger ]; then
+        echo 1 > /proc/sys/kernel/sysrq 2>/dev/null
+        echo o > /proc/sysrq-trigger 2>/dev/null
+      fi
+      # Last resort: force immediate reboot
+      reboot -f 2>/dev/null || true
+    }
+  }
+" > /var/log/max-lifetime.log 2>&1 &
 
 # Configure CloudWatch Logs if a log group is specified
 if [ "$cloudwatch_logs_group" != "" ]; then

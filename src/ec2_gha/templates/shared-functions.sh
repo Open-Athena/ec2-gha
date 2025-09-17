@@ -6,17 +6,20 @@
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/runner-setup.log; }
 log_error() { log "ERROR: $1" >&2; }
 
+dn=/dev/null
+
 # Wait for dpkg lock to be released (for Debian/Ubuntu systems)
 wait_for_dpkg_lock() {
-  local timeout=120
-  while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
-    if [ $timeout -le 0 ]; then
-      log "WARNING: dpkg lock timeout, proceeding anyway"
+  local t=120
+  local L=/var/lib/dpkg/lock
+  while fuser $L-frontend >$dn 2>&1 || fuser $L >$dn 2>&1; do
+    if [ $t -le 0 ]; then
+      log "WARNING: dpkg lock t, proceeding anyway"
       break
     fi
-    log "dpkg is locked, waiting... ($timeout seconds remaining)"
+    log "dpkg is locked, waiting... ($t seconds remaining)"
     sleep 5
-    timeout=$((timeout - 5))
+    t=$((t - 5))
   done
 }
 
@@ -24,18 +27,18 @@ wait_for_dpkg_lock() {
 flush_cloudwatch_logs() {
   log "Stopping CloudWatch agent to flush logs"
   if systemctl is-active --quiet amazon-cloudwatch-agent; then
-    systemctl stop amazon-cloudwatch-agent 2>/dev/null || /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a stop -m ec2 2>/dev/null || true
+    systemctl stop amazon-cloudwatch-agent 2>$dn || /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a stop -m ec2 2>$dn || true
   fi
 }
 
 # Get EC2 instance metadata (IMDSv2 compatible)
 get_metadata() {
   local path="$1"
-  local token=$(curl -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 300" http://169.254.169.254/latest/api/token 2>/dev/null || true)
+  local token=$(curl -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 300" http://169.254.169.254/latest/api/token 2>$dn || true)
   if [ -n "$token" ]; then
-    curl -s -H "X-aws-ec2-metadata-token: $token" "http://169.254.169.254/latest/meta-data/$path" 2>/dev/null || echo "unknown"
+    curl -s -H "X-aws-ec2-metadata-token: $token" "http://169.254.169.254/latest/meta-data/$path" 2>$dn || echo "unknown"
   else
-    curl -s "http://169.254.169.254/latest/meta-data/$path" 2>/dev/null || echo "unknown"
+    curl -s "http://169.254.169.254/latest/meta-data/$path" 2>$dn || echo "unknown"
   fi
   return 0  # Always return success to avoid set -e issues
 }
@@ -46,7 +49,7 @@ deregister_all_runners() {
     if [ -d "$RUNNER_DIR" ] && [ -f "$RUNNER_DIR/config.sh" ]; then
       log "Deregistering runner in $RUNNER_DIR"
       cd "$RUNNER_DIR"
-      pkill -INT -f "$RUNNER_DIR/run.sh" 2>/dev/null || true
+      pkill -INT -f "$RUNNER_DIR/run.sh" 2>$dn || true
       sleep 1
       if [ -f "$RUNNER_DIR/.runner-token" ]; then
         TOKEN=$(cat "$RUNNER_DIR/.runner-token")
@@ -62,7 +65,7 @@ debug_sleep_and_shutdown() {
   if [ "$debug" = "true" ] || [ "$debug" = "True" ] || [ "$debug" = "1" ]; then
     log "Debug: Sleeping 600s before shutdown..."
     # Detect the SSH user from the home directory
-    local ssh_user=$(basename "$homedir" 2>/dev/null || echo "ec2-user")
+    local ssh_user=$(basename "$homedir" 2>$dn || echo "ec2-user")
     local public_ip=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
     log "SSH into instance with: ssh ${ssh_user}@${public_ip}"
     log "Then check: /var/log/runner-setup.log and /var/log/runner-debug.log"
@@ -121,24 +124,24 @@ configure_runner() {
   # Install dependencies if needed
   if [ -f ./bin/installdependencies.sh ]; then
     # Quick check for common AMIs with pre-installed deps
-    if command -v dpkg >/dev/null 2>&1 && dpkg -l libicu[0-9]* 2>/dev/null | grep -q ^ii; then
+    if command -v dpkg >$dn 2>&1 && dpkg -l libicu[0-9]* 2>$dn | grep -q ^ii; then
       log "Dependencies exist, skipping install"
     else
       log "Installing dependencies..."
       set +e
-      sudo ./bin/installdependencies.sh >/dev/null 2>&1
+      sudo ./bin/installdependencies.sh >$dn 2>&1
       local deps_result=$?
       set -e
       if [ $deps_result -ne 0 ]; then
         log "Dependencies script failed, installing manually..."
-        if command -v dnf >/dev/null 2>&1; then
-          sudo dnf install -y libicu lttng-ust >/dev/null 2>&1 || true
-        elif command -v yum >/dev/null 2>&1; then
-          sudo yum install -y libicu >/dev/null 2>&1 || true
-        elif command -v apt-get >/dev/null 2>&1; then
+        if command -v dnf >$dn 2>&1; then
+          sudo dnf install -y libicu lttng-ust >$dn 2>&1 || true
+        elif command -v yum >$dn 2>&1; then
+          sudo yum install -y libicu >$dn 2>&1 || true
+        elif command -v apt-get >$dn 2>&1; then
           wait_for_dpkg_lock
-          sudo apt-get update >/dev/null 2>&1 || true
-          sudo apt-get install -y libicu-dev >/dev/null 2>&1 || true
+          sudo apt-get update >$dn 2>&1 || true
+          sudo apt-get install -y libicu-dev >$dn 2>&1 || true
         fi
       fi
     fi
@@ -169,7 +172,7 @@ EOF
   fi
 
   # Start runner in background
-  RUNNER_ALLOW_RUNASROOT=1 nohup ./run.sh > /dev/null 2>&1 &
+  RUNNER_ALLOW_RUNASROOT=1 nohup ./run.sh > $dn 2>&1 &
   local pid=$!
   log "Started runner $idx in $runner_dir (PID: $pid)"
 
