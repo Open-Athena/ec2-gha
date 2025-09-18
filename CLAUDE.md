@@ -124,12 +124,14 @@ The runner uses a polling-based approach to determine when to terminate:
 
 3. **Robustness Features**:
    - **Process Monitoring**: Distinguishes between idle Listener and active Worker
+   - **Fallback Termination**: Multiple shutdown methods with increasing force
    - **Hook Script Separation**: Scripts fetched from GitHub for maintainability
 
 4. **Clean Shutdown Sequence**:
    - Stop runner processes gracefully (SIGINT with timeout)
    - Deregister all runners from GitHub
    - Flush CloudWatch logs (if configured)
+   - Execute shutdown with fallbacks (`systemctl poweroff`, `shutdown -h now`, `halt -f`)
 
 ### AWS Resource Tagging
 By default, launched EC2 instances are Tagged with:
