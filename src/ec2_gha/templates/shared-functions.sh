@@ -62,15 +62,21 @@ deregister_all_runners() {
 
 # Function to handle debug mode sleep and shutdown
 debug_sleep_and_shutdown() {
-  if [ "$debug" = "true" ] || [ "$debug" = "True" ] || [ "$debug" = "1" ]; then
-    log "Debug: Sleeping 600s before shutdown..."
+  # Check if debug is a number (sleep duration in minutes)
+  if [[ "$debug" =~ ^[0-9]+$ ]]; then
+    local sleep_minutes="$debug"
+    local sleep_seconds=$((sleep_minutes * 60))
+    log "Debug: Sleeping ${sleep_minutes} minutes before shutdown..."
     # Detect the SSH user from the home directory
     local ssh_user=$(basename "$homedir" 2>$dn || echo "ec2-user")
     local public_ip=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
     log "SSH into instance with: ssh ${ssh_user}@${public_ip}"
     log "Then check: /var/log/runner-setup.log and /var/log/runner-debug.log"
-    sleep 600
+    sleep "$sleep_seconds"
     log "Debug period ended, shutting down"
+  elif [ "$debug" = "true" ] || [ "$debug" = "True" ] || [ "$debug" = "trace" ]; then
+    # Just tracing enabled, no sleep
+    log "Shutting down immediately (debug tracing enabled but no sleep requested)"
   else
     log "Shutting down immediately (debug mode not enabled)"
   fi

@@ -39,9 +39,9 @@ on:
         required: false
         type: string
       debug:
-        description: "Enable debug output (set -x) in runner setup script"
+        description: "Debug mode: false=off, true/trace=set -x only, number=set -x + sleep N minutes before shutdown"
         required: false
-        type: boolean
+        type: string
         default: false
       ec2_home_dir:
         description: "Home directory on the AWS instance (falls back to vars.EC2_HOME_DIR, then auto-detection)"

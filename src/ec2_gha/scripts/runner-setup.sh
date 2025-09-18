@@ -7,8 +7,11 @@ set -e
 # Enable debug tracing to a file for troubleshooting
 exec 2> >(tee -a /var/log/runner-debug.log >&2)
 
-# Conditionally enable debug mode
-[ "$debug" = "true" ] || [ "$debug" = "True" ] || [ "$debug" = "1" ] && set -x
+# Conditionally enable debug mode (set -x) for tracing
+# Debug can be: true/True/trace (trace only), or a number (trace + sleep minutes)
+if [ "$debug" = "true" ] || [ "$debug" = "True" ] || [ "$debug" = "trace" ] || [[ "$debug" =~ ^[0-9]+$ ]]; then
+  set -x
+fi
 
 # Determine home directory early since it's needed by shared functions
 if [ -z "$homedir" ] || [ "$homedir" = "AUTO" ]; then
