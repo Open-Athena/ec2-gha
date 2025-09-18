@@ -95,7 +95,7 @@ class StartAWS(CreateCloudInstance):
         A comma-separated list of labels to apply to the runner. Defaults to an empty string.
     max_instance_lifetime : str
         Maximum instance lifetime in minutes before automatic shutdown. Defaults to "360" (6 hours).
-    root_device_size : int
+    root_device_size : str
         The size of the root device. Defaults to 0 which uses the default.
     runner_initial_grace_period : str
         Grace period in seconds before terminating if no jobs have started. Defaults to "180".
@@ -134,7 +134,7 @@ class StartAWS(CreateCloudInstance):
     key_name: str = ""
     labels: str = ""
     max_instance_lifetime: str = "360"
-    root_device_size: int = 0
+    root_device_size: str = "0"
     runner_grace_period: str = "60"
     runner_initial_grace_period: str = "180"
     runner_poll_interval: str = "10"
@@ -351,9 +351,23 @@ class StartAWS(CreateCloudInstance):
                 block_devices = deepcopy(image_options["Images"][0]["BlockDeviceMappings"])
                 for idx, block_device in enumerate(block_devices):
                     if block_device["DeviceName"] == root_device_name:
-                        if self.root_device_size > 0:
-                            block_devices[idx]["Ebs"]["VolumeSize"] = self.root_device_size
+                        size_str = self.root_device_size.strip()
+                        if size_str.startswith('+'):
+                            # +N means "AMI size + N GB"
+                            # Useful for disk-full testing: +2 means AMI size + 2GB
+                            current_size = block_device.get("Ebs", {}).get("VolumeSize", 8)
+                            buffer_gb = int(size_str[1:])
+                            new_size = current_size + buffer_gb
+                            block_devices[idx]["Ebs"]["VolumeSize"] = new_size
                             params["BlockDeviceMappings"] = block_devices
+                            print(f"Setting disk size to {new_size}GB (AMI default {current_size}GB + {buffer_gb}GB)")
+                        elif size_str != "0":
+                            # Explicit size in GB
+                            new_size = int(size_str)
+                            if new_size > 0:
+                                block_devices[idx]["Ebs"]["VolumeSize"] = new_size
+                                params["BlockDeviceMappings"] = block_devices
+                        # else: size_str == "0" means use AMI default, do nothing
                         break
             else:
                 raise e
@@ -451,7 +465,7 @@ class StartAWS(CreateCloudInstance):
                 "userdata": self.userdata,
             }
             params = self._build_aws_params(user_data_params, idx=idx)
-            if self.root_device_size > 0:
+            if self.root_device_size != "0":
                 params = self._modify_root_disk_size(ec2, params)
 
             # Check UserData size before calling AWS

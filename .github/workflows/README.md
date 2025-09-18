@@ -14,6 +14,8 @@ For documentation about the main workflow, [`runner.yml`](runner.yml), see [the 
     - [`instances-mtx` – multiple instances for parallel jobs](#instances-mtx)
     - [`runners-mtx` – multiple runners on single instance](#runners-mtx)
     - [`jobs-split` – different job types on separate instances](#jobs-split)
+- [Stress testing](#stress-tests)
+    - [`test-disk-full` – disk-full scenario testing](#test-disk-full)
 - [Real-world example: Mamba installation testing](#mamba)
 <!-- /toc -->
 
@@ -71,6 +73,23 @@ Useful regression test, demonstrates and verifies features.
 - Demonstrates targeted job placement
 - **Instance type:** `t3.medium`
 - **Use case:** Pipeline with dedicated instances per stage
+
+## Stress testing <a id="stress-tests"></a>
+
+### [`test-disk-full`](test-disk-full.yml) – disk-full scenario testing <a id="test-disk-full"></a>
+- Tests runner behavior when disk space is exhausted
+- **Configurable parameters:**
+  - `disk_size`: Root disk size (`0`=AMI default, `+N`=AMI+N GB, e.g., `+2`)
+  - `fill_strategy`: How to fill disk (`gradual`, `immediate`, or `during-tests`)
+  - `debug`: Debug mode (`false`, `true`/`trace`, or number for trace+sleep)
+  - `max_instance_lifetime`: Maximum lifetime before forced shutdown (default: 15 minutes)
+- **Features tested:**
+  - Heartbeat mechanism for detecting stuck jobs
+  - Stale job file detection and cleanup
+  - Worker/Listener process monitoring
+  - Robust shutdown with multiple fallback methods
+- **Instance type:** `t3.medium` (default)
+- **Use case:** Verifying robustness in resource-constrained environments
 
 ## Real-world example: [Mamba installation testing](https://github.com/Open-Athena/mamba/blob/gha/.github/workflows/install.yaml) <a id="mamba"></a>
 - Tests different versions of `mamba_ssm` package on GPU instances

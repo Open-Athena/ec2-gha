@@ -39,7 +39,7 @@ inputs:
     description: "Name of an EC2 key pair to use for SSH access (falls back to vars.EC2_KEY_NAME)"
     required: false
   ec2_root_device_size:
-    description: "Root device size in GB (0 = use AMI default)"
+    description: "Root disk size in GB (0=AMI default, +N=AMI+N GB for testing, e.g. +2)"
     required: false
   ec2_security_group_id:
     description: "AWS security group ID (falls back to vars.EC2_SECURITY_GROUP_ID)"
