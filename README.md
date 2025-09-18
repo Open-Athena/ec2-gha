@@ -210,6 +210,8 @@ The runner uses [GitHub Actions runner hooks][hooks] to track job lifecycle and 
 
 #### Job Tracking
 - **Start/End Hooks**: Creates/removes JSON files in `/var/run/github-runner-jobs/` when jobs start/end
+- **Heartbeat Mechanism**: Active jobs update their file timestamps periodically to detect stuck jobs
+- **Process Monitoring**: Checks both Runner.Listener and Runner.Worker processes to verify jobs are truly running
 - **Activity Tracking**: Updates `/var/run/github-runner-last-activity` timestamp on job events
 
 #### Termination Conditions
@@ -218,6 +220,10 @@ The systemd timer checks every `runner_poll_interval` seconds (default: 10s) and
 2. Idle time exceeds the grace period:
    - `runner_initial_grace_period` (default: 180s) - Before first job
    - `runner_grace_period` (default: 60s) - Between jobs
+
+#### Robustness Features
+- **Stale Job Detection**: Removes job files older than 3× poll interval (likely disk full)
+- **Worker Process Detection**: Distinguishes between idle runners and active jobs
 
 #### Clean Shutdown Sequence
 1. Stop runner processes gracefully (SIGINT)

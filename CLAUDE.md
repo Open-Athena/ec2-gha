@@ -112,18 +112,19 @@ The runner uses a polling-based approach to determine when to terminate:
 1. **Job Tracking**: GitHub runner hooks track job lifecycle
    - `job-started-hook.sh`: Creates JSON files in `/var/run/github-runner-jobs/`
    - `job-completed-hook.sh`: Removes job files and updates activity timestamp
+   - Heartbeat mechanism: Active jobs touch their files periodically
 
 2. **Periodic Polling**: Systemd timer runs `check-runner-termination.sh` every `runner_poll_interval` seconds (default: 10s)
-   - Checks for running jobs (files with `"status":"running"`)
-   - If no running jobs, compares idle time against grace period
+   - Checks for running jobs by verifying both Runner.Listener AND Runner.Worker processes
+   - Detects stale job files (older than 3× poll interval, likely disk full)
+   - Handles Worker process death (job completed but hook couldn't run)
    - Grace periods:
      - `runner_initial_grace_period` (default: 180s) - Before first job
      - `runner_grace_period` (default: 60s) - Between jobs
 
-3. **Effective Termination Time**: Due to polling interval, actual termination occurs:
-   - **Minimum**: grace_period seconds after last activity
-   - **Maximum**: grace_period + runner_poll_interval seconds
-   - Example: With 60s grace and 10s poll → terminates 60-70s after last job
+3. **Robustness Features**:
+   - **Process Monitoring**: Distinguishes between idle Listener and active Worker
+   - **Hook Script Separation**: Scripts fetched from GitHub for maintainability
 
 4. **Clean Shutdown Sequence**:
    - Stop runner processes gracefully (SIGINT with timeout)
