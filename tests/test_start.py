@@ -24,15 +24,38 @@ def base_aws_params():
 
 
 @pytest.fixture(scope="function")
-def aws(base_aws_params):
+def aws(base_aws_params, monkeypatch):
     with mock_aws():
-        yield StartAWS(**base_aws_params)
+        monkeypatch.setenv("INPUT_ACTION_REF", "v2")
+        # Mock subprocess.run to handle both git config and git rev-parse
+        def mock_subprocess_run(cmd, *args, **kwargs):
+            if cmd[0] == 'git' and cmd[1] == 'config':
+                # git config command - just return success
+                mock_result = Mock()
+                mock_result.returncode = 0
+                mock_result.stdout = ""
+                mock_result.stderr = ""
+                return mock_result
+            elif cmd[0] == 'git' and cmd[1] == 'rev-parse':
+                # git rev-parse command - return mock SHA
+                mock_result = Mock()
+                mock_result.returncode = 0
+                mock_result.stdout = "abc123def456789012345678901234567890abcd\n"
+                mock_result.stderr = ""
+                return mock_result
+            else:
+                raise ValueError(f"Unexpected subprocess call: {cmd}")
+
+        with patch("ec2_gha.start.subprocess.run", side_effect=mock_subprocess_run):
+            yield StartAWS(**base_aws_params)
 
 
 @pytest.fixture(scope="function")
 def aws_params_user_data():
     """User data params for AWS params tests"""
     return {
+        "action_ref": "v2",  # Test ref
+        "action_sha": "abc123def456789012345678901234567890abcd",  # Mock SHA for testing
         "cloudwatch_logs_group": "",  # Empty = disabled
         "debug": "",  # Empty = disabled
         "github_run_id": "16725250800",
@@ -152,7 +175,7 @@ def test_build_aws_params(complete_params, aws_params_user_data, github_env, sna
         assert params == snapshot
 
 
-def test_auto_home_dir(complete_params):
+def test_auto_home_dir(complete_params, monkeypatch):
     """Test that home_dir is set to AUTO when not provided"""
     params = complete_params.copy()
     params['home_dir'] = ""
@@ -160,7 +183,26 @@ def test_auto_home_dir(complete_params):
     aws.gh_runner_tokens = ["test-token"]
     aws.runner_release = "https://example.com/runner.tar.gz"
 
-    with patch("boto3.client") as mock_client:
+    monkeypatch.setenv("INPUT_ACTION_REF", "v2")
+
+    # Mock subprocess.run for git commands
+    def mock_subprocess_run(cmd, *args, **kwargs):
+        if cmd[0] == 'git' and cmd[1] == 'config':
+            mock_result = Mock()
+            mock_result.returncode = 0
+            return mock_result
+        elif cmd[0] == 'git' and cmd[1] == 'rev-parse':
+            mock_result = Mock()
+            mock_result.returncode = 0
+            mock_result.stdout = "abc123def456789012345678901234567890abcd\n"
+            return mock_result
+        else:
+            raise ValueError(f"Unexpected subprocess call: {cmd}")
+
+    with (
+        patch("boto3.client") as mock_client,
+        patch("ec2_gha.start.subprocess.run", side_effect=mock_subprocess_run)
+    ):
         mock_ec2 = Mock()
         mock_client.return_value = mock_ec2
 
@@ -318,17 +360,34 @@ def test_create_instances_missing_release(aws):
         aws.create_instances()
 
 
-def test_create_instances_sets_auto_home_dir(base_aws_params):
+def test_create_instances_sets_auto_home_dir(base_aws_params, monkeypatch):
     """Test that home_dir is set to AUTO when not provided"""
     params = base_aws_params.copy()
     params['home_dir'] = ""
+
+    monkeypatch.setenv("INPUT_ACTION_REF", "v2")
+
+    # Mock subprocess.run for git commands
+    def mock_subprocess_run(cmd, *args, **kwargs):
+        if cmd[0] == 'git' and cmd[1] == 'config':
+            mock_result = Mock()
+            mock_result.returncode = 0
+            return mock_result
+        elif cmd[0] == 'git' and cmd[1] == 'rev-parse':
+            mock_result = Mock()
+            mock_result.returncode = 0
+            mock_result.stdout = "abc123def456789012345678901234567890abcd\n"
+            return mock_result
+        else:
+            raise ValueError(f"Unexpected subprocess call: {cmd}")
 
     with mock_aws():
         aws = StartAWS(**params)
         aws.gh_runner_tokens = ["test-token"]
         aws.runner_release = "https://example.com/runner.tar.gz"
 
-        with patch("boto3.client") as mock_client:
+        with patch("boto3.client") as mock_client, \
+             patch("ec2_gha.start.subprocess.run", side_effect=mock_subprocess_run):
             mock_ec2 = Mock()
             mock_client.return_value = mock_ec2
 

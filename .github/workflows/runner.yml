@@ -166,6 +166,7 @@ jobs:
         id: aws-start
         uses: ./
         with:
+          action_ref: ${{ inputs.action_ref }}
           aws_region: ${{ inputs.aws_region || vars.AWS_REGION }}
           aws_tags: ${{ inputs.aws_tags }}
           cloudwatch_logs_group: ${{ inputs.cloudwatch_logs_group || vars.CLOUDWATCH_LOGS_GROUP }}
