@@ -20,7 +20,7 @@ cd tests/ && pytest -v -m 'not slow'
 # pytest --snapshot-update -m 'not slow'
 # pytest -vvv -m 'not slow' .
 # ```
-# Can be used in conjunction with `git rebase -x`. I'll mostly do this manually when cleaning up commits.
+# Update syrupy "snapshot" files. Can also be used in conjunction with `git rebase -x` (I'll mostly do that manually, when cleaning up commits).
 scripts/update-snapshots.sh
 ```
 
