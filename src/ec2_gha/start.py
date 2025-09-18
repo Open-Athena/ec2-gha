@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from os import environ
 from string import Template
 import json
+import subprocess
 
 import boto3
 from botocore.exceptions import ClientError
@@ -12,6 +13,58 @@ from gha_runner.helper.workflow_cmds import output
 from copy import deepcopy
 
 from ec2_gha.defaults import AUTO, RUNNER_REGISTRATION_TIMEOUT
+
+
+def resolve_ref_to_sha(ref: str) -> str:
+    """Resolve a Git ref (branch/tag/SHA) to a commit SHA using local git.
+
+    Parameters
+    ----------
+    ref : str
+        The Git ref to resolve (branch name, tag, or SHA)
+
+    Returns
+    -------
+    str
+        The commit SHA
+
+    Raises
+    ------
+    RuntimeError
+        If the ref cannot be resolved to a SHA
+    """
+    # Handle Docker container ownership issues by marking directory as safe
+    # This is needed when running in GitHub Actions Docker containers where
+    # the workspace is owned by a different user than the container user
+    subprocess.run(
+        ['git', 'config', '--global', '--add', 'safe.directory', '/github/workspace'],
+        capture_output=True,
+        text=True,
+        check=True  # Fail if this doesn't work - we need it for the next command
+    )
+
+    try:
+        # Use git rev-parse to resolve the ref to a SHA
+        # This works for branches, tags, and SHAs (returns SHAs unchanged)
+        result = subprocess.run(
+            ['git', 'rev-parse', ref],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        sha = result.stdout.strip()
+        if sha:
+            # Only print if we actually resolved something (not just returned a SHA)
+            if sha != ref:
+                print(f"Resolved action_ref '{ref}' to SHA: {sha}")
+            return sha
+        else:
+            raise RuntimeError(f"git rev-parse returned empty output for ref '{ref}'")
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(
+            f"Failed to resolve action_ref '{ref}' to SHA. "
+            f"Error: {e.stderr or str(e)}"
+        )
 
 
 @dataclass
@@ -250,19 +303,6 @@ class StartAWS(CreateCloudInstance):
         # Ensure instance_name has a default value
         kwargs.setdefault('instance_name', '')
 
-        # Load shared functions script - not a template, just include as-is
-        shared_functions_file = importlib.resources.files("ec2_gha").joinpath("templates/shared-functions.sh")
-        with shared_functions_file.open() as f:
-            shared_functions_content = f.read()
-
-        # Strip the shebang line from shared functions since it will be embedded
-        shared_functions_lines = shared_functions_content.split('\n')
-        if shared_functions_lines[0].startswith('#!'):
-            shared_functions_content = '\n'.join(shared_functions_lines[1:])
-
-        # Add shared functions as-is to the main template kwargs
-        kwargs['shared_functions'] = shared_functions_content
-
         template = importlib.resources.files("ec2_gha").joinpath("templates/user-script.sh.templ")
         with template.open() as f:
             template_content = f.read()
@@ -271,22 +311,13 @@ class StartAWS(CreateCloudInstance):
             parsed = Template(template_content)
             runner_script = parsed.substitute(**kwargs)
 
-            # Strip comment lines to save space (but keep shebang lines)
-            lines = runner_script.split('\n')
-            filtered_lines = []
-            for line in lines:
-                stripped = line.strip()
-                # Keep shebang, empty lines, and non-comment lines
-                if not stripped or stripped.startswith('#!') or not stripped.startswith('#'):
-                    filtered_lines.append(line)
-
-            runner_script = '\n'.join(filtered_lines)
-
-            # Log the final size
+            # Log the final size for informational purposes
             script_size = len(runner_script)
             print(f"UserData size: {script_size} bytes ({script_size/16384*100:.1f}% of 16KB limit)")
 
             return runner_script
+        except KeyError as e:
+            raise ValueError(f"Missing required template parameter: {e}") from e
         except Exception as e:
             raise Exception("Error parsing user data template") from e
 
@@ -327,6 +358,7 @@ class StartAWS(CreateCloudInstance):
             else:
                 raise e
         return params
+
 
     def create_instances(self) -> dict[str, str]:
         """Create instances on AWS.
@@ -389,7 +421,14 @@ class StartAWS(CreateCloudInstance):
             name_template = Template(name_pattern)
             instance_name_value = name_template.safe_substitute(**template_vars)
 
+            # Resolve action_ref to a SHA for security and consistency
+            action_ref = environ.get("INPUT_ACTION_REF")
+            if not action_ref:
+                raise ValueError("action_ref is required but was not provided. Check that runner.yml passes it correctly.")
+            action_sha = resolve_ref_to_sha(action_ref)
+
             user_data_params = {
+                "action_sha": action_sha,  # The resolved SHA
                 "cloudwatch_logs_group": self.cloudwatch_logs_group,
                 "debug": self.debug,
                 "github_workflow": environ.get("GITHUB_WORKFLOW", ""),

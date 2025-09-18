@@ -4,6 +4,10 @@ runs:
   using: "docker"
   image: "Dockerfile"
 inputs:
+  action_ref:
+    description: "ec2-gha Git ref (branch/tag/SHA) to use for fetching scripts"
+    required: false
+    default: "v2"
   aws_region:
     description: "AWS region for EC2 instances (falls back to vars.AWS_REGION, then us-east-1)"
     required: false

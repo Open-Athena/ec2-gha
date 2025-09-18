@@ -103,7 +103,7 @@ The `EC2_LAUNCH_ROLE` is passed to [aws-actions/configure-aws-credentials]; if y
 
 Many of these fall back to corresponding `vars.*` (if not provided as `inputs`):
 
-- `action_ref` - ec2-gha Git ref to checkout (branch/tag/SHA); auto-detected if not specified
+- `action_ref` - ec2-gha Git ref to checkout (branch/tag/SHA); automatically resolved to a SHA for security
 - `aws_region` - AWS region for EC2 instances (falls back to `vars.AWS_REGION`, default: `us-east-1`)
 - `cloudwatch_logs_group` - CloudWatch Logs group name for streaming logs (falls back to `vars.CLOUDWATCH_LOGS_GROUP`)
 - `ec2_home_dir` - Home directory (default: `/home/ubuntu`)
@@ -204,20 +204,24 @@ jobs:
 
 ### Termination logic <a id="termination"></a>
 
-The runner uses [GitHub Actions runner hooks][hooks] to track job start/end events, and a `systemd` timer to poll for when there's:
-1. no active jobs running, and
-2. no job starts or ends in at least `runner_grace_period` seconds.
+The runner uses [GitHub Actions runner hooks][hooks] to track job lifecycle and determine when to terminate:
 
-Job start/end events `touch` a "last activity" timestamp file (`/var/run/github-runner-last-activity`), and the systemd timer checks this file every `runner_poll_interval` seconds (default: 10s).
+#### Job Tracking
+- **Start/End Hooks**: Creates/removes JSON files in `/var/run/github-runner-jobs/` when jobs start/end
+- **Activity Tracking**: Updates `/var/run/github-runner-last-activity` timestamp on job events
 
-Each job's status is tracked in a JSON file like `/var/run/github-runner-jobs/<job_id>.job`.
+#### Termination Conditions
+The systemd timer checks every `runner_poll_interval` seconds (default: 10s) and terminates when:
+1. No active jobs are running
+2. Idle time exceeds the grace period:
+   - `runner_initial_grace_period` (default: 180s) - Before first job
+   - `runner_grace_period` (default: 60s) - Between jobs
 
-The default `runner_grace_period` is 60s, but a longer `runner_initial_grace_period` (default: 180s) is used for the first job after instance boot (to allow time for the runner to register and start).
-
-When terminating, the runner:
-- Gracefully stops the runner process
-- Removes itself from GitHub
-- Flushes CloudWatch logs
+#### Clean Shutdown Sequence
+1. Stop runner processes gracefully (SIGINT)
+2. Deregister runners from GitHub
+3. Flush CloudWatch logs (if configured)
+4. Execute shutdown with multiple fallback methods
 
 ### CloudWatch Logs Integration <a id="cloudwatch"></a>
 
