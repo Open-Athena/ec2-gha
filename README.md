@@ -224,6 +224,7 @@ The systemd timer checks every `runner_poll_interval` seconds (default: 10s) and
 #### Robustness Features
 - **Stale Job Detection**: Removes job files older than 3× poll interval (likely disk full)
 - **Worker Process Detection**: Distinguishes between idle runners and active jobs
+- **Multiple Shutdown Methods**: Uses robust termination with fallback to `shutdown -h now`
 
 #### Clean Shutdown Sequence
 1. Stop runner processes gracefully (SIGINT)

@@ -66,21 +66,34 @@ debug_sleep_and_shutdown() {
   if [[ "$debug" =~ ^[0-9]+$ ]]; then
     local sleep_minutes="$debug"
     local sleep_seconds=$((sleep_minutes * 60))
-    log "Debug: Sleeping ${sleep_minutes} minutes before shutdown..."
+    log "Debug: Sleeping ${sleep_minutes} minutes before shutdown..." || true
     # Detect the SSH user from the home directory
     local ssh_user=$(basename "$homedir" 2>$dn || echo "ec2-user")
     local public_ip=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
-    log "SSH into instance with: ssh ${ssh_user}@${public_ip}"
-    log "Then check: /var/log/runner-setup.log and /var/log/runner-debug.log"
+    log "SSH into instance with: ssh ${ssh_user}@${public_ip}" || true
+    log "Then check: /var/log/runner-setup.log and /var/log/runner-debug.log" || true
     sleep "$sleep_seconds"
-    log "Debug period ended, shutting down"
+    log "Debug period ended, shutting down" || true
   elif [ "$debug" = "true" ] || [ "$debug" = "True" ] || [ "$debug" = "trace" ]; then
     # Just tracing enabled, no sleep
-    log "Shutting down immediately (debug tracing enabled but no sleep requested)"
+    log "Shutting down immediately (debug tracing enabled but no sleep requested)" || true
   else
-    log "Shutting down immediately (debug mode not enabled)"
+    log "Shutting down immediately (debug mode not enabled)" || true
   fi
-  shutdown -h now
+
+  # Try multiple shutdown methods as fallbacks (important when disk is full)
+  shutdown -h now 2>/dev/null || {
+    # If shutdown fails, try halt
+    halt -f 2>/dev/null || {
+      # If halt fails, try sysrq if available (Linux only)
+      if [ -w /proc/sysrq-trigger ]; then
+        echo 1 > /proc/sys/kernel/sysrq 2>/dev/null
+        echo o > /proc/sysrq-trigger 2>/dev/null
+      fi
+      # Last resort: force immediate reboot
+      reboot -f 2>/dev/null || true
+    }
+  }
 }
 
 # Function to handle fatal errors and terminate the instance
