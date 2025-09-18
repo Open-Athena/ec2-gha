@@ -117,6 +117,7 @@ Many of these fall back to corresponding `vars.*` (if not provided as `inputs`):
 - `ec2_key_name` - EC2 key pair name (for [SSH access])
 - `instance_count` - Number of instances to create (default: 1, for parallel jobs)
 - `instance_name` - Name tag template for EC2 instances. Uses Python string.Template format with variables: `$repo`, `$name` (workflow filename stem), `$workflow` (full workflow name), `$ref`, `$run` (number), `$idx` (0-based instance index for multi-instance launches). Default: `$repo/$name#$run` (or `$repo/$name#$run $idx` for multi-instance)
+- `debug` - Debug mode: `false`=off, `true`/`trace`=set -x only, number=set -x + sleep N minutes before shutdown (for troubleshooting)
 - `ec2_root_device_size` - Root device size in GB (default: 0 = use AMI default)
 - `ec2_security_group_id` - Security group ID (required for [SSH access], should expose inbound port 22)
 - `max_instance_lifetime` - Maximum instance lifetime in minutes before automatic shutdown (falls back to `vars.MAX_INSTANCE_LIFETIME`, default: 360 = 6 hours; generally should not be relevant, instances shut down within 1-2mins of jobs completing)
