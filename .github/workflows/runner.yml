@@ -68,7 +68,7 @@ on:
         required: false
         type: string
       ec2_root_device_size:
-        description: "Root device size in GB (0 = use AMI default)"
+        description: "Root disk size in GB (0=AMI default, +N=AMI+N GB for testing, e.g. +2)"
         required: false
         type: string
         default: "0"

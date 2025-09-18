@@ -119,7 +119,7 @@ def complete_params(base_aws_params):
         "gh_runner_tokens": ["test"],
         "iam_instance_profile": "test",
         "labels": "",
-        "root_device_size": 100,
+        "root_device_size": "100",
         "runner_release": "test.tar.gz",
         "security_group_id": "test",
         "subnet_id": "test",
@@ -253,6 +253,7 @@ def test_modify_root_disk_size(complete_params):
                 error_response={"Error": {"Code": "DryRunOperation"}},
                 operation_name="DescribeImages"
             )
+        # This is the second call without DryRun
         return mock_image_data
 
     mock_client.describe_images = mock_describe_images
@@ -300,9 +301,53 @@ def test_modify_root_disk_size_permission_error(complete_params):
     assert 'AccessDenied' in str(exc_info.value)
 
 
+def test_modify_root_disk_size_plus_syntax(complete_params):
+    """Test the +N syntax for adding GB to AMI default size"""
+    mock_client = Mock()
+    complete_params["root_device_size"] = "+5"
+
+    # Mock image data with default size of 8GB
+    mock_image_data = {
+        "Images": [{
+            "RootDeviceName": "/dev/sda1",
+            "BlockDeviceMappings": [
+                {
+                    "DeviceName": "/dev/sda1",
+                    "Ebs": {
+                        "DeleteOnTermination": True,
+                        "VolumeSize": 8,
+                        "VolumeType": "gp3"
+                    }
+                }
+            ]
+        }]
+    }
+
+    def mock_describe_images(**kwargs):
+        if kwargs.get('DryRun', False):
+            raise ClientError(
+                error_response={"Error": {"Code": "DryRunOperation"}},
+                operation_name="DescribeImages"
+            )
+        return mock_image_data
+
+    mock_client.describe_images = mock_describe_images
+    aws = StartAWS(**complete_params)
+
+    # Test with +5 (should be 8 + 5 = 13)
+    result = aws._modify_root_disk_size(mock_client, {})
+    assert result["BlockDeviceMappings"][0]["Ebs"]["VolumeSize"] == 13
+
+    # Test with +2
+    complete_params["root_device_size"] = "+2"
+    aws = StartAWS(**complete_params)
+    result = aws._modify_root_disk_size(mock_client, {})
+    assert result["BlockDeviceMappings"][0]["Ebs"]["VolumeSize"] == 10
+
+
 def test_modify_root_disk_size_no_change(complete_params):
     mock_client = Mock()
-    complete_params["root_device_size"] = 0
+    complete_params["root_device_size"] = "0"
 
     mock_image_data = {
         "Images": [{

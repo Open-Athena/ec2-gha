@@ -39,7 +39,7 @@ def main():
         .update_state("INPUT_EC2_INSTANCE_PROFILE", "iam_instance_profile")
         .update_state("INPUT_EC2_INSTANCE_TYPE", "instance_type")
         .update_state("INPUT_EC2_KEY_NAME", "key_name")
-        .update_state("INPUT_EC2_ROOT_DEVICE_SIZE", "root_device_size", type_hint=int)
+        .update_state("INPUT_EC2_ROOT_DEVICE_SIZE", "root_device_size", type_hint=str)
         .update_state("INPUT_EC2_SECURITY_GROUP_ID", "security_group_id")
         .update_state("INPUT_EC2_USERDATA", "userdata")
         .update_state("INPUT_EXTRA_GH_LABELS", "labels")
