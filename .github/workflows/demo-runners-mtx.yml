@@ -1,0 +1,88 @@
+name: Demo – multiple runners on single instance
+on:
+  workflow_dispatch:
+    inputs:
+      runners_per_instance:
+        description: "Number of runners per EC2 instance"
+        required: false
+        type: string
+        default: "3"
+      sleep:
+        description: "Sleep duration in seconds for each job"
+        required: false
+        type: string
+        default: "10"
+  workflow_call:   # Tested by `demos.yml`
+    inputs:
+      runners_per_instance:
+        required: false
+        type: string
+        default: "3"
+      sleep:
+        required: false
+        type: string
+        default: "10"
+
+permissions:
+  id-token: write  # Required for AWS OIDC authentication
+  contents: read   # Required for actions/checkout; normally set by default, but must explicitly specify when defining a custom `permissions` block.
+
+jobs:
+  ec2:
+    name: Launch 1 EC2 instance with ${{ inputs.runners_per_instance }} runners
+    uses: ./.github/workflows/runner.yml
+    secrets: inherit
+    with:
+      instance_count: "1"
+      runners_per_instance: ${{ inputs.runners_per_instance }}
+      ec2_image_id: ami-0e86e20dae9224db8  # Ubuntu 24.04 LTS x86_64 (us-east-1)
+      # Use a larger instance type to handle multiple runners
+      ec2_instance_type: t3.xlarge  # 4 vCPUs, 16 GB RAM
+
+  parallel-jobs:
+    needs: ec2
+    strategy:
+      matrix:
+        # Parse the JSON array of runner objects for the matrix
+        runner: ${{ fromJson(needs.ec2.outputs.mtx) }}
+    runs-on: ${{ matrix.runner.id }}
+    name: 'Parallel job ${{ matrix.runner.idx }} (${{ matrix.runner.id }})'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Runner info
+        run: |
+          echo "Running on runner with label: ${{ matrix.runner.id }}"
+          echo "Runner index: ${{ matrix.runner.idx }}"
+          echo "Runner index on instance: ${{ matrix.runner.runner_idx }}"
+          echo "Hostname: $(hostname)"
+          echo "Instance ID: $(curl -s http://169.254.169.254/latest/meta-data/instance-id)"
+          echo "Instance type: $(curl -s http://169.254.169.254/latest/meta-data/instance-type)"
+          echo "Region: $(curl -s http://169.254.169.254/latest/meta-data/placement/region)"
+          echo "Runner index: ${RUNNER_INDEX:-unknown}"
+          echo "Runner home: ${RUNNER_HOME:-unknown}"
+
+      - name: Simulate workload
+        run: |
+          # All runners on same instance run independently
+          DURATION=${{ inputs.sleep }}
+          echo "Starting at: $(date '+%Y-%m-%d %H:%M:%S.%3N')"
+          echo "Simulating workload for ${DURATION} seconds..."
+          sleep $DURATION
+          echo "Workload complete at: $(date '+%Y-%m-%d %H:%M:%S.%3N')"
+
+      - name: Verify parallelism
+        run: |
+          echo "This job ran in parallel with other matrix jobs on the SAME instance"
+          echo "With ${{ inputs.runners_per_instance }} runners and ${{ inputs.sleep }}s sleep:"
+          echo "- Sequential execution would take: $((${{ inputs.runners_per_instance }} * ${{ inputs.sleep }}))s"
+          echo "- Parallel execution should take: ~${{ inputs.sleep }}s (plus overhead)"
+
+      - name: Show resource sharing
+        run: |
+          echo "=== Resource Usage ==="
+          echo "CPU cores available: $(nproc)"
+          echo "Memory available: $(free -h | grep Mem | awk '{print $2}')"
+          echo "Load average: $(uptime | awk -F'load average:' '{print $2}')"
+          echo ""
+          echo "Note: All ${{ inputs.runners_per_instance }} runners share these resources"

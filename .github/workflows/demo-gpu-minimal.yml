@@ -1,8 +1,20 @@
-name: Demo – minimal EC2 GPU runner
+name: Demo – minimal EC2 GPU job
 on:
   workflow_dispatch:
+  workflow_call:   # Tested by `demos.yml`
+permissions:
+  id-token: write  # Required for AWS OIDC authentication
+  contents: read   # Required for actions/checkout; normally set by default, but must explicitly specify when defining a custom `permissions` block.
 jobs:
-  placeholder:
-    runs-on: ubuntu-latest
+  ec2:
+    # To use from another repo: Open-Athena/ec2-gha/.github/workflows/runner.yml@v2
+    uses: ./.github/workflows/runner.yml
+    secrets: inherit
+    with:
+      ec2_instance_type: g4dn.xlarge       # ≈$0.56/hr GPU instance: https://instances.vantage.sh/aws/ec2/g4dn.xlarge
+      ec2_image_id: ami-00096836009b16a22  # Deep Learning OSS Nvidia Driver AMI GPU PyTorch 2.4.1 (Ubuntu 22.04) 20250302
+  gpu-test:
+    needs: ec2
+    runs-on: ${{ needs.ec2.outputs.id }}
     steps:
-      - run: echo "Placeholder workflow – being developed in #2 / rw/hooks branch"
+    - run: nvidia-smi  # Verify GPU is available

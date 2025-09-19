@@ -1,0 +1,89 @@
+name: Demo – multiple instances for different job types
+on:
+  workflow_dispatch:
+  workflow_call:   # Tested by `demos.yml`
+
+permissions:
+  id-token: write  # Required for AWS OIDC authentication
+  contents: read   # Required for actions/checkout; normally set by default, but must explicitly specify when defining a custom `permissions` block.
+
+jobs:
+  ec2:
+    name: Launch 2 EC2 instances
+    uses: ./.github/workflows/runner.yml
+    secrets: inherit
+    with:
+      instance_count: "2"
+      ec2_image_id: ami-0e86e20dae9224db8  # Ubuntu 24.04 LTS x86_64 (us-east-1)
+
+  # First job type - runs on first instance
+  build-job:
+    needs: ec2
+    runs-on: ${{ fromJson(needs.ec2.outputs.mtx)[0].id }}
+    name: Build job
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build task
+        run: |
+          echo "Running BUILD job on first instance"
+          echo "Instance: $(curl -s http://169.254.169.254/latest/meta-data/instance-id)"
+          echo "Simulating build process..."
+          sleep 10
+          echo "Build complete!"
+
+      - name: Create artifact
+        run: |
+          echo "Build output from $(hostname)" > build-output.txt
+          echo "Built at $(date)" >> build-output.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: build-output.txt
+
+  # Second job type - runs on second instance
+  test-job:
+    needs: ec2
+    runs-on: ${{ fromJson(needs.ec2.outputs.mtx)[1].id }}
+    name: Test job
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test task
+        run: |
+          echo "Running TEST job on second instance"
+          echo "Instance: $(curl -s http://169.254.169.254/latest/meta-data/instance-id)"
+          echo "Simulating test suite..."
+          sleep 15
+          echo "Tests passed!"
+
+      - name: Generate test report
+        run: |
+          echo "Test report from $(hostname)" > test-report.txt
+          echo "Tests run at $(date)" >> test-report.txt
+          echo "All tests: PASSED" >> test-report.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: test-report.txt
+
+  # Aggregation job that uses artifacts from both instances
+  report:
+    needs: [build-job, test-job]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Generate final report
+        run: |
+          echo "=== Final Report ==="
+          echo "Build output:"
+          cat build-output/build-output.txt
+          echo ""
+          echo "Test report:"
+          cat test-report/test-report.txt
+          echo ""
+          echo "Both jobs completed successfully using separate EC2 instances!"

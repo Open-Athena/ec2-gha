@@ -26,7 +26,7 @@ on:
         type: string
         default: "v2"
       aws_region:
-        description: "AWS region for EC2 instances (defaults to us-east-1)"
+        description: "AWS region for EC2 instances (falls back to vars.AWS_REGION, then us-east-1)"
         required: false
         type: string
         default: "us-east-1"
@@ -38,35 +38,37 @@ on:
         description: "CloudWatch Logs group name for streaming runner logs (leave empty to disable)"
         required: false
         type: string
-      ec2_launch_role:
-        description: "AWS role ARN to assume for EC2 operations (falls back to vars.EC2_LAUNCH_ROLE; one or the other is required)"
+      debug:
+        description: "Debug mode: false=off, true/trace=set -x only, number=set -x + sleep N minutes before shutdown"
+        required: false
+        type: string
+        default: false
+      ec2_home_dir:
+        description: "Home directory on the AWS instance (falls back to vars.EC2_HOME_DIR, then auto-detection)"
         required: false
         type: string
       ec2_image_id:
-        description: "AWS AMI ID to use (falls back to vars.EC2_IMAGE_ID)"
+        description: "AWS AMI ID to use (required - must be provided via input or vars.EC2_IMAGE_ID)"
         required: false
         type: string
-        default: "ami-00096836009b16a22" # Deep Learning OSS Nvidia Driver AMI GPU PyTorch
-      ec2_instance_type:
-        description: "AWS instance type (falls back to vars.EC2_INSTANCE_TYPE)"
-        required: false
-        type: string
-        default: "g4dn.xlarge"
       ec2_instance_profile:
         description: "Instance profile name to attach to launched EC2 instance (required for CloudWatch logging)"
         required: false
         type: string
-      ec2_home_dir:
-        description: "Home directory on the AWS instance (falls back to vars.EC2_HOME_DIR)"
+      ec2_instance_type:
+        description: "AWS instance type (falls back to vars.EC2_INSTANCE_TYPE, then t3.medium)"
         required: false
         type: string
-        default: "/home/ubuntu"
       ec2_key_name:
         description: "Name of an EC2 key pair to use for SSH access (falls back to vars.EC2_KEY_NAME)"
         required: false
         type: string
+      ec2_launch_role:
+        description: "AWS role ARN to assume for EC2 operations (falls back to vars.EC2_LAUNCH_ROLE)"
+        required: false
+        type: string
       ec2_root_device_size:
-        description: "Root device size in GB (0 = use AMI default)"
+        description: "Root disk size in GB (0=AMI default, +N=AMI+N GB for testing, e.g. +2)"
         required: false
         type: string
         default: "0"
@@ -78,43 +80,66 @@ on:
         description: "Additional userdata script to run on instance startup (before runner starts)"
         required: false
         type: string
+      instance_count:
+        description: "Number of EC2 instances to create (for parallel jobs)"
+        required: false
+        type: string
+        default: "1"
+      instance_name:
+        description: "Name tag template for EC2 instances. Uses Python string.Template format with variables: $repo, $name (workflow filename stem), $workflow (full workflow name), $ref, $run (number), $idx (0-based instance index for multi-instance launches). Default: $repo/$name#$run (or $repo/$name#$run $idx for multi-instance)"
+        required: false
+        type: string
       max_instance_lifetime:
         description: "Maximum instance lifetime in minutes before automatic shutdown (falls back to vars.MAX_INSTANCE_LIFETIME, then 360 = 6 hours)"
         required: false
         type: string
+      name:
+        description: "Name for the launch job"
+        required: false
+        type: string
       runner_grace_period:
-        description: "Grace period in seconds before terminating instance after last job completes (default 120)"
+        description: "Grace period in seconds before terminating instance after last job completes (falls back to vars.RUNNER_GRACE_PERIOD, then 60)"
         required: false
         type: string
-        default: "120"
       runner_initial_grace_period:
-        description: "Grace period in seconds before terminating instance if no jobs start (default 180)"
+        description: "Grace period in seconds before terminating instance if no jobs start (falls back to vars.RUNNER_INITIAL_GRACE_PERIOD, then 180)"
         required: false
         type: string
-        default: "180"
+      runner_poll_interval:
+        description: "How often (in seconds) to check termination conditions (falls back to vars.RUNNER_POLL_INTERVAL, then 10)"
+        required: false
+        type: string
       runner_registration_timeout:
-        description: "Maximum seconds to wait for runner to register with GitHub (default 300 = 5 minutes)"
+        description: "Maximum seconds to wait for runner to register with GitHub (falls back to vars.RUNNER_REGISTRATION_TIMEOUT, then 360 = 6 minutes)"
         required: false
         type: string
-        default: "300"
+      runners_per_instance:
+        description: "Number of runners to register per instance (each in separate directories to allow concurrent jobs)"
+        required: false
+        type: string
+        default: "1"
       ssh_pubkey:
         description: "SSH public key to add to authorized_keys (falls back to vars.SSH_PUBKEY)"
         required: false
         type: string
     outputs:
       id:
-        description: "Instance ID for runs-on"
+        description: "Instance ID for runs-on (single instance)"
         value: ${{ jobs.launch.outputs.id }}
+      mtx:
+        description: "JSON array of objects for matrix strategies"
+        value: ${{ jobs.launch.outputs.mtx }}
 
 permissions:
-  id-token: write # Required for AWS OIDC
+  id-token: write  # Required for AWS OIDC
 
 jobs:
   launch:
-    name: Launch ${{ inputs.ec2_instance_type || vars.EC2_INSTANCE_TYPE }}
+    name: ${{ inputs.name || format('Launch {0}', inputs.ec2_instance_type || vars.EC2_INSTANCE_TYPE) }}
     runs-on: ubuntu-latest
     outputs:
       id: ${{ steps.aws-start.outputs.label }}
+      mtx: ${{ steps.aws-start.outputs.mtx }}
     steps:
       - name: Check EC2_LAUNCH_ROLE configuration
         run: |
@@ -141,21 +166,27 @@ jobs:
         id: aws-start
         uses: ./
         with:
-          aws_region: ${{ inputs.aws_region }}
+          action_ref: ${{ inputs.action_ref }}
+          aws_region: ${{ inputs.aws_region || vars.AWS_REGION }}
           aws_tags: ${{ inputs.aws_tags }}
           cloudwatch_logs_group: ${{ inputs.cloudwatch_logs_group || vars.CLOUDWATCH_LOGS_GROUP }}
-          ec2_image_id: ${{ inputs.ec2_image_id || vars.EC2_IMAGE_ID }}
-          ec2_instance_type: ${{ inputs.ec2_instance_type || vars.EC2_INSTANCE_TYPE }}
-          ec2_instance_profile: ${{ inputs.ec2_instance_profile || vars.EC2_INSTANCE_PROFILE }}
+          debug: ${{ inputs.debug }}
           ec2_home_dir: ${{ inputs.ec2_home_dir || vars.EC2_HOME_DIR }}
+          ec2_image_id: ${{ inputs.ec2_image_id || vars.EC2_IMAGE_ID }}
+          ec2_instance_profile: ${{ inputs.ec2_instance_profile || vars.EC2_INSTANCE_PROFILE }}
+          ec2_instance_type: ${{ inputs.ec2_instance_type || vars.EC2_INSTANCE_TYPE }}
           ec2_key_name: ${{ inputs.ec2_key_name || vars.EC2_KEY_NAME }}
           ec2_root_device_size: ${{ inputs.ec2_root_device_size }}
           ec2_security_group_id: ${{ inputs.ec2_security_group_id || vars.EC2_SECURITY_GROUP_ID }}
           ec2_userdata: ${{ inputs.ec2_userdata }}
-          max_instance_lifetime: ${{ inputs.max_instance_lifetime || vars.MAX_INSTANCE_LIFETIME || '360' }}
-          runner_initial_grace_period: ${{ inputs.runner_initial_grace_period }}
-          runner_grace_period: ${{ inputs.runner_grace_period }}
-          runner_registration_timeout: ${{ inputs.runner_registration_timeout }}
+          instance_count: ${{ inputs.instance_count }}
+          instance_name: ${{ inputs.instance_name }}
+          max_instance_lifetime: ${{ inputs.max_instance_lifetime || vars.MAX_INSTANCE_LIFETIME }}
+          runner_grace_period: ${{ inputs.runner_grace_period || vars.RUNNER_GRACE_PERIOD }}
+          runner_initial_grace_period: ${{ inputs.runner_initial_grace_period || vars.RUNNER_INITIAL_GRACE_PERIOD }}
+          runner_poll_interval: ${{ inputs.runner_poll_interval || vars.RUNNER_POLL_INTERVAL }}
+          runner_registration_timeout: ${{ inputs.runner_registration_timeout || vars.RUNNER_REGISTRATION_TIMEOUT }}
+          runners_per_instance: ${{ inputs.runners_per_instance }}
           ssh_pubkey: ${{ inputs.ssh_pubkey || vars.SSH_PUBKEY }}
         env:
           GH_PAT: ${{ secrets.GH_SA_TOKEN }}

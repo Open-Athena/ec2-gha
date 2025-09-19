@@ -1,0 +1,210 @@
+name: Test Disk Full
+
+on:
+  workflow_dispatch:
+    inputs:
+      disk_size:
+        description: 'Root disk size in GB (0=AMI default, +N=AMI+N GB, e.g. +2 for AMI+2GB)'
+        required: false
+        type: string
+        default: '+2' # 2GB more than the AMI size
+      fill_strategy:
+        description: 'How to fill disk: gradual, immediate, or during-tests'
+        required: false
+        type: choice
+        options:
+          - gradual
+          - immediate
+          - during-tests
+        default: gradual
+      debug:
+        description: 'Debug mode: false=off, true/trace=trace only, number=trace+sleep N minutes'
+        required: false
+        type: string
+        default: 'true'
+      instance_type:
+        description: 'Instance type'
+        required: false
+        type: string
+        default: 't3.medium'
+      max_instance_lifetime:
+        description: 'Max instance lifetime in minutes (default: 15)'
+        required: false
+        type: string
+        default: '15'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  launch:
+    name: Launch runner
+    uses: ./.github/workflows/runner.yml
+    secrets:
+      GH_SA_TOKEN: ${{ secrets.GH_SA_TOKEN }}
+    with:
+      ec2_image_id: ami-0ca5a2f40c2601df6  # Ubuntu 24.04 x86_64 in us-east-1
+      ec2_instance_type: ${{ inputs.instance_type }}
+      ec2_root_device_size: ${{ inputs.disk_size }}
+      debug: ${{ inputs.debug }}
+      max_instance_lifetime: ${{ inputs.max_instance_lifetime }}
+
+  test-disk-full:
+    name: Fill disk (${{ inputs.fill_strategy }})
+    needs: launch
+    runs-on: ${{ needs.launch.outputs.id }}
+
+    steps:
+      - name: Check initial disk usage
+        run: |
+          echo "=== Initial disk usage ==="
+          df -h /
+          echo ""
+          echo "=== Largest directories ==="
+          du -sh /* 2>/dev/null | sort -hr | head -10 || true
+
+      - name: Fill disk immediately
+        if: inputs.fill_strategy == 'immediate'
+        run: |
+          echo "=== Filling disk immediately ==="
+          # Create a large file that leaves only ~100MB free
+          AVAILABLE=$(df / | awk 'NR==2 {print int($4/1024)-100}')
+          if [ $AVAILABLE -gt 0 ]; then
+            echo "Creating ${AVAILABLE}MB file to fill disk..."
+            dd if=/dev/zero of=/tmp/disk_filler bs=1M count=$AVAILABLE 2>/dev/null || true
+          fi
+          echo "=== Disk usage after fill ==="
+          df -h /
+
+      - name: Fill disk gradually
+        if: inputs.fill_strategy == 'gradual'
+        run: |
+          echo "=== Filling disk gradually ==="
+          COUNTER=0
+          while true; do
+            AVAILABLE=$(df / | awk 'NR==2 {print int($4/1024)}')
+            if [ $AVAILABLE -lt 500 ]; then
+              echo "Disk nearly full (${AVAILABLE}MB remaining), creating final files..."
+              # Fill remaining space with smaller files
+              for i in {1..10}; do
+                dd if=/dev/zero of=/tmp/gradual_fill_${COUNTER}_${i} bs=1M count=50 2>/dev/null || break
+              done
+              break
+            fi
+            echo "Creating 500MB file (${AVAILABLE}MB currently available)..."
+            dd if=/dev/zero of=/tmp/gradual_fill_${COUNTER} bs=1M count=500 2>/dev/null || break
+            COUNTER=$((COUNTER + 1))
+            df -h /
+            sleep 2
+          done
+          echo "=== Final disk usage ==="
+          df -h /
+
+      - name: Setup Python project for test
+        if: inputs.fill_strategy == 'during-tests'
+        run: |
+          echo "=== Setting up Python project that will fill disk during tests ==="
+          cat > setup.py << 'EOF'
+          from setuptools import setup, find_packages
+
+          setup(
+              name="disk-filler-test",
+              version="0.1.0",
+              packages=find_packages(),
+              python_requires=">=3.8",
+              install_requires=[
+                  "pytest>=7.0.0",
+                  "numpy>=1.20.0",  # Large package
+                  "pandas>=1.3.0",   # Large package
+                  "scipy>=1.7.0",    # Large package
+                  "matplotlib>=3.4.0",  # Large package
+                  "scikit-learn>=1.0.0",  # Large package
+                  "torch>=2.0.0",  # Very large package
+                  "transformers>=4.30.0",  # Very large package
+              ],
+          )
+          EOF
+
+          mkdir -p tests
+          cat > tests/test_disk_filler.py << 'EOF'
+          import os
+          import tempfile
+          import pytest
+
+          def test_create_large_arrays():
+              """Create large arrays to consume memory and disk (via swap/tmp)"""
+              import numpy as np
+              arrays = []
+              for i in range(10):
+                  # Create 100MB arrays
+                  arr = np.random.random((1024, 1024, 100))
+                  arrays.append(arr)
+                  # Also write to temp file
+                  with tempfile.NamedTemporaryFile(delete=False, dir='/tmp') as f:
+                      np.save(f, arr)
+                  print(f"Created array {i+1}/10")
+
+          def test_generate_files():
+              """Generate many temporary files"""
+              for i in range(100):
+                  with tempfile.NamedTemporaryFile(delete=False, dir='/tmp',
+                                                    prefix=f'test_file_{i}_') as f:
+                      # Write 10MB to each file
+                      f.write(os.urandom(10 * 1024 * 1024))
+                  if i % 10 == 0:
+                      print(f"Generated {i+1}/100 files")
+
+          def test_disk_space_check():
+              """Check if we're out of disk space"""
+              import shutil
+              usage = shutil.disk_usage('/')
+              percent_used = (usage.used / usage.total) * 100
+              print(f"Disk usage: {percent_used:.1f}%")
+              print(f"Free space: {usage.free / (1024**3):.2f} GB")
+              # This test "passes" even when disk is full to see behavior
+              assert percent_used > 0
+          EOF
+
+          echo "=== Installing packages (this will consume disk space) ==="
+          pip install -e . || true
+
+          echo "=== Running tests that fill disk ==="
+          pytest tests/ -v || true
+
+          echo "=== Final disk usage ==="
+          df -h /
+
+      - name: Try to write when disk is full
+        if: always()
+        run: |
+          echo "=== Testing write operations with full disk ==="
+          # Try various write operations to see what fails
+          echo "Test" > /tmp/test_write.txt 2>&1 || echo "Failed to write to /tmp"
+          echo "Test" > ~/test_write.txt 2>&1 || echo "Failed to write to home"
+          touch /tmp/test_touch 2>&1 || echo "Failed to touch file"
+          mkdir /tmp/test_mkdir 2>&1 || echo "Failed to create directory"
+
+          # Check if we can still run commands
+          echo "=== Can we still run basic commands? ==="
+          date || echo "date command failed"
+          pwd || echo "pwd command failed"
+          whoami || echo "whoami command failed"
+
+      - name: Monitor termination behavior
+        if: always()
+        run: |
+          echo "=== Monitoring termination behavior ==="
+          echo "This job will complete soon. Watch the runner logs to see if:"
+          echo "1. The termination check detects disk full state"
+          echo "2. The instance can successfully shut down"
+          echo "3. The robust shutdown methods are triggered"
+          echo ""
+          echo "Current disk usage:"
+          df -h /
+          echo ""
+          echo "Checking runner processes:"
+          ps aux | grep -E '[R]unner|[c]heck-runner-termination' || true
+          echo ""
+          echo "Last entries in termination check log:"
+          tail -20 /tmp/termination-check.log 2>/dev/null || echo "No termination check log found"
