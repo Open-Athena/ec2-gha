@@ -367,6 +367,7 @@ if [ $succeeded -gt 0 ]; then
   touch $V-registered
 else
   log_error "No runners registered successfully"
+  terminate_instance "No runners registered successfully"
 fi
 
 # Kill registration watchdog now that runners are registered
