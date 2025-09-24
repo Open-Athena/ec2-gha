@@ -140,37 +140,40 @@ nohup bash -c "
 # Configure CloudWatch Logs if a log group is specified
 if [ "$cloudwatch_logs_group" != "" ]; then
   log "Installing CloudWatch agent"
-  (
-    if command -v dpkg >/dev/null 2>&1; then
-      wait_for_dpkg_lock
-      wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
-      dpkg -i -E ./amazon-cloudwatch-agent.deb
-      rm amazon-cloudwatch-agent.deb
-    elif command -v rpm >/dev/null 2>&1; then
-      wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
-      rpm -U ./amazon-cloudwatch-agent.rpm
-      rm amazon-cloudwatch-agent.rpm
-    fi
-    # Build CloudWatch config with factored strings
-    P='"file_path":'
-    G=',"log_group_name":"'$cloudwatch_logs_group'","log_stream_name":"{instance_id}/'
-    Z='","timezone":"UTC"}'
-    H="$homedir"
-    cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
+  if command -v dpkg >/dev/null 2>&1; then
+    wait_for_dpkg_lock
+    wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
+    dpkg -i -E ./amazon-cloudwatch-agent.deb
+    rm amazon-cloudwatch-agent.deb
+  elif command -v rpm >/dev/null 2>&1; then
+    wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
+    rpm -U ./amazon-cloudwatch-agent.rpm
+    rm amazon-cloudwatch-agent.rpm
+  fi
+
+  # Build CloudWatch config with factored strings
+  G=',"log_group_name":"'$cloudwatch_logs_group'","log_stream_name":"{instance_id}/'
+  Z='","timezone":"UTC"}'
+  H="$homedir"
+  cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
 {"agent":{"run_as_user":"cwagent"},"logs":{"logs_collected":{"files":{"collect_list":[
-{"$P/var/log/runner-setup.log${G}runner-setup$Z",
-{"$P/var/log/runner-debug.log${G}runner-debug$Z",
-{"$P/tmp/job-started-hook.log${G}job-started$Z",
-{"$P/tmp/job-completed-hook.log${G}job-completed$Z",
-{"$P/tmp/termination-check.log${G}termination$Z",
-{"$P/tmp/runner-*-config.log${G}runner-config$Z",
-{"$P$H/_diag/Runner_**.log${G}runner-diag$Z",
-{"$P$H/_diag/Worker_**.log${G}worker-diag$Z"
+{"file_path":"/var/log/runner-setup.log${G}runner-setup$Z"},
+{"file_path":"/var/log/runner-debug.log${G}runner-debug$Z"},
+{"file_path":"/tmp/job-started-hook.log${G}job-started$Z"},
+{"file_path":"/tmp/job-completed-hook.log${G}job-completed$Z"},
+{"file_path":"/tmp/termination-check.log${G}termination$Z"},
+{"file_path":"/tmp/runner-*-config.log${G}runner-config$Z"},
+{"file_path":"$H/_diag/Runner_**.log${G}runner-diag$Z"},
+{"file_path":"$H/_diag/Worker_**.log${G}worker-diag$Z"}
 ]}}}}
 EOF
-    /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
-    log "CloudWatch agent started"
-  ) || log "WARNING: CloudWatch agent installation failed, continuing without it"
+
+  if ! /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s; then
+    log_error "Failed to start CloudWatch agent"
+    terminate_instance "CloudWatch agent startup failed"
+  fi
+
+  log "CloudWatch agent started successfully"
 fi
 
 # Configure SSH access if public key provided (useful for debugging)
