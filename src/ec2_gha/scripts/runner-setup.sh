@@ -142,13 +142,23 @@ nohup bash -c "
 # Configure CloudWatch Logs if a log group is specified
 if [ "$cloudwatch_logs_group" != "" ]; then
   log "Installing CloudWatch agent"
+
+  # Detect architecture for CloudWatch agent
+  ARCH=$(uname -m)
+  if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+    CW_ARCH="arm64"
+  else
+    CW_ARCH="amd64"
+  fi
+
   if command -v dpkg >/dev/null 2>&1; then
     wait_for_dpkg_lock
-    wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
+    wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/${CW_ARCH}/latest/amazon-cloudwatch-agent.deb
     dpkg -i -E ./amazon-cloudwatch-agent.deb
     rm amazon-cloudwatch-agent.deb
   elif command -v rpm >/dev/null 2>&1; then
-    wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
+    # Note: For RPM-based systems, the path structure might differ
+    wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/${CW_ARCH}/latest/amazon-cloudwatch-agent.rpm
     rpm -U ./amazon-cloudwatch-agent.rpm
     rm amazon-cloudwatch-agent.rpm
   fi
