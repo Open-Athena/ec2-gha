@@ -5,6 +5,9 @@
 
 exec >> /tmp/job-completed-hook.log 2>&1
 
+# Source common variables
+source /usr/local/bin/runner-common.sh
+
 # Get runner index from environment (defaults to 0 for single-runner instances)
 I="${RUNNER_INDEX:-0}"
 
@@ -13,7 +16,7 @@ I="${RUNNER_INDEX:-0}"
 echo "[$(date)] Runner-$I: LOG_PREFIX_JOB_COMPLETED ${GITHUB_JOB}"
 
 # Remove the job tracking file to indicate this runner no longer has an active job
-rm -f /var/run/github-runner-jobs/${GITHUB_RUN_ID}-${GITHUB_JOB}-$I.job
+rm -f $RUNNER_STATE_DIR/jobs/${GITHUB_RUN_ID}-${GITHUB_JOB}-$I.job
 
 # Update activity timestamp to reset the idle timer
-touch /var/run/github-runner-last-activity
+touch $RUNNER_STATE_DIR/last-activity

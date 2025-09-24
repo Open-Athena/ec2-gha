@@ -8,9 +8,9 @@ exec >> /tmp/termination-check.log 2>&1
 source /usr/local/bin/runner-common.sh
 
 # File paths for tracking
-A="/var/run/github-runner-last-activity"
-J="/var/run/github-runner-jobs"
-H="/var/run/github-runner-has-run-job"
+A="$RUNNER_STATE_DIR/last-activity"
+J="$RUNNER_STATE_DIR/jobs"
+H="$RUNNER_STATE_DIR/has-run-job"
 
 # Current timestamp
 N=$(date +%s)

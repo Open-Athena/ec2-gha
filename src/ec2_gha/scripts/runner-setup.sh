@@ -46,8 +46,9 @@ fi
 export homedir
 
 # Set common paths
-B=/usr/local/bin
-V=/var/run/github-runner
+BIN_DIR=/usr/local/bin
+RUNNER_STATE_DIR=/var/run/github-runner
+mkdir -p $RUNNER_STATE_DIR
 
 # Fetch shared functions from GitHub
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Fetching shared functions from GitHub (SHA: ${action_sha})" | tee -a /var/log/runner-setup.log
@@ -59,26 +60,27 @@ if ! curl -sSL "$FUNCTIONS_URL" -o /tmp/shared-functions.sh && ! wget -q "$FUNCT
 fi
 
 # Write shared functions that will be used by multiple scripts
-cat > $B/runner-common.sh << EOSF
+cat > $BIN_DIR/runner-common.sh << EOSF
 # Auto-generated shared functions and variables
 # Set homedir for scripts that source this file
 homedir="$homedir"
 debug="$debug"
-export homedir debug
+RUNNER_STATE_DIR="$RUNNER_STATE_DIR"
+export homedir debug RUNNER_STATE_DIR
 
 EOSF
 
 # Append the downloaded shared functions
-cat /tmp/shared-functions.sh >> $B/runner-common.sh
+cat /tmp/shared-functions.sh >> $BIN_DIR/runner-common.sh
 
-chmod +x $B/runner-common.sh
-source $B/runner-common.sh
+chmod +x $BIN_DIR/runner-common.sh
+source $BIN_DIR/runner-common.sh
 
 logger "EC2-GHA: Starting userdata script"
 trap 'logger "EC2-GHA: Script failed at line $LINENO with exit code $?"' ERR
 trap 'terminate_instance "Setup script failed with error on line $LINENO"' ERR
 # Handle watchdog termination signal
-trap 'if [ -f $V-watchdog-terminate ]; then terminate_instance "No runners registered within timeout"; else terminate_instance "Script terminated"; fi' TERM
+trap 'if [ -f $RUNNER_STATE_DIR/watchdog-terminate ]; then terminate_instance "No runners registered within timeout"; else terminate_instance "Script terminated"; fi' TERM
 
 # Set up registration timeout failsafe - terminate if runner doesn't register in time
 REGISTRATION_TIMEOUT="$runner_registration_timeout"
@@ -86,17 +88,17 @@ if ! [[ "$REGISTRATION_TIMEOUT" =~ ^[0-9]+$ ]]; then
   REGISTRATION_TIMEOUT=300
 fi
 # Create a marker file for watchdog termination request
-touch $V-watchdog-active
+touch $RUNNER_STATE_DIR/watchdog-active
 (
   sleep $REGISTRATION_TIMEOUT
-  if [ ! -f $V-registered ]; then
-    touch $V-watchdog-terminate
+  if [ ! -f $RUNNER_STATE_DIR/registered ]; then
+    touch $RUNNER_STATE_DIR/watchdog-terminate
     kill -TERM $$ 2>/dev/null || true
   fi
-  rm -f $V-watchdog-active
+  rm -f $RUNNER_STATE_DIR/watchdog-active
 ) &
 REGISTRATION_WATCHDOG_PID=$!
-echo $REGISTRATION_WATCHDOG_PID > $V-watchdog.pid
+echo $REGISTRATION_WATCHDOG_PID > $RUNNER_STATE_DIR/watchdog.pid
 
 # Run any custom user data script provided by the user
 if [ -n "$userdata" ]; then
@@ -151,21 +153,29 @@ if [ "$cloudwatch_logs_group" != "" ]; then
     rm amazon-cloudwatch-agent.rpm
   fi
 
-  # Build CloudWatch config with factored strings
-  G=',"log_group_name":"'$cloudwatch_logs_group'","log_stream_name":"{instance_id}/'
-  Z='","timezone":"UTC"}'
-  H="$homedir"
+  # Build CloudWatch config
   cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
-{"agent":{"run_as_user":"cwagent"},"logs":{"logs_collected":{"files":{"collect_list":[
-{"file_path":"/var/log/runner-setup.log${G}runner-setup$Z"},
-{"file_path":"/var/log/runner-debug.log${G}runner-debug$Z"},
-{"file_path":"/tmp/job-started-hook.log${G}job-started$Z"},
-{"file_path":"/tmp/job-completed-hook.log${G}job-completed$Z"},
-{"file_path":"/tmp/termination-check.log${G}termination$Z"},
-{"file_path":"/tmp/runner-*-config.log${G}runner-config$Z"},
-{"file_path":"$H/_diag/Runner_**.log${G}runner-diag$Z"},
-{"file_path":"$H/_diag/Worker_**.log${G}worker-diag$Z"}
-]}}}}
+{
+  "agent": {
+    "run_as_user": "cwagent"
+  },
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          { "file_path": "/var/log/runner-setup.log"   , "log_group_name": "$cloudwatch_logs_group", "log_stream_name": "{instance_id}/runner-setup" , "timezone": "UTC" },
+          { "file_path": "/var/log/runner-debug.log"   , "log_group_name": "$cloudwatch_logs_group", "log_stream_name": "{instance_id}/runner-debug" , "timezone": "UTC" },
+          { "file_path": "/tmp/job-started-hook.log"   , "log_group_name": "$cloudwatch_logs_group", "log_stream_name": "{instance_id}/job-started"  , "timezone": "UTC" },
+          { "file_path": "/tmp/job-completed-hook.log" , "log_group_name": "$cloudwatch_logs_group", "log_stream_name": "{instance_id}/job-completed", "timezone": "UTC" },
+          { "file_path": "/tmp/termination-check.log"  , "log_group_name": "$cloudwatch_logs_group", "log_stream_name": "{instance_id}/termination"  , "timezone": "UTC" },
+          { "file_path": "/tmp/runner-*-config.log"    , "log_group_name": "$cloudwatch_logs_group", "log_stream_name": "{instance_id}/runner-config", "timezone": "UTC" },
+          { "file_path": "$homedir/_diag/Runner_**.log", "log_group_name": "$cloudwatch_logs_group", "log_stream_name": "{instance_id}/runner-diag"  , "timezone": "UTC" },
+          { "file_path": "$homedir/_diag/Worker_**.log", "log_group_name": "$cloudwatch_logs_group", "log_stream_name": "{instance_id}/worker-diag"  , "timezone": "UTC" }
+        ]
+      }
+    }
+  }
+}
 EOF
 
   if ! /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s; then
@@ -229,7 +239,7 @@ log "Downloaded runner binary"
 fetch_script() {
   local script_name="$1"
   local url="${BASE_URL}/${script_name}"
-  local dest="${B}/${script_name}"
+  local dest="${BIN_DIR}/${script_name}"
 
   if command -v curl >/dev/null 2>&1; then
     curl -fsSL "$url" -o "$dest" || {
@@ -257,14 +267,14 @@ fetch_script "job-completed-hook.sh"
 fetch_script "check-runner-termination.sh"
 
 # Replace log prefix placeholders with actual values
-sed -i "s/LOG_PREFIX_JOB_STARTED/${log_prefix_job_started}/g" $B/job-started-hook.sh
-sed -i "s/LOG_PREFIX_JOB_COMPLETED/${log_prefix_job_completed}/g" $B/job-completed-hook.sh
+sed -i "s/LOG_PREFIX_JOB_STARTED/${log_prefix_job_started}/g" $BIN_DIR/job-started-hook.sh
+sed -i "s/LOG_PREFIX_JOB_COMPLETED/${log_prefix_job_completed}/g" $BIN_DIR/job-completed-hook.sh
 
-chmod +x $B/job-started-hook.sh $B/job-completed-hook.sh $B/check-runner-termination.sh
+chmod +x $BIN_DIR/job-started-hook.sh $BIN_DIR/job-completed-hook.sh $BIN_DIR/check-runner-termination.sh
 
 # Set up job tracking directory
-mkdir -p $V-jobs
-touch $V-last-activity
+mkdir -p $RUNNER_STATE_DIR/jobs
+touch $RUNNER_STATE_DIR/last-activity
 
 # Set up periodic termination check using systemd
 cat > /etc/systemd/system/runner-termination-check.service << EOF
@@ -276,7 +286,7 @@ Type=oneshot
 Environment="RUNNER_GRACE_PERIOD=$runner_grace_period"
 Environment="RUNNER_INITIAL_GRACE_PERIOD=$runner_initial_grace_period"
 Environment="RUNNER_POLL_INTERVAL=$runner_poll_interval"
-ExecStart=$B/check-runner-termination.sh
+ExecStart=$BIN_DIR/check-runner-termination.sh
 EOF
 
 cat > /etc/systemd/system/runner-termination-check.timer << EOF
@@ -367,21 +377,21 @@ fi
 
 if [ $succeeded -gt 0 ]; then
   log "$succeeded runner(s) registered and started successfully"
-  touch $V-registered
+  touch $RUNNER_STATE_DIR/registered
 else
   log_error "No runners registered successfully"
   terminate_instance "No runners registered successfully"
 fi
 
 # Kill registration watchdog now that runners are registered
-if [ -f $V-watchdog.pid ]; then
-  WATCHDOG_PID=$(cat $V-watchdog.pid)
+if [ -f $RUNNER_STATE_DIR/watchdog.pid ]; then
+  WATCHDOG_PID=$(cat $RUNNER_STATE_DIR/watchdog.pid)
   kill $WATCHDOG_PID 2>/dev/null || true
-  rm -f $V-watchdog.pid
+  rm -f $RUNNER_STATE_DIR/watchdog.pid
 fi
 
 # Final setup - ensure runner directories are accessible for debugging
-touch $V-started
+touch $RUNNER_STATE_DIR/started
 chmod o+x $homedir
 for RUNNER_DIR in $homedir/runner-*; do
   [ -d "$RUNNER_DIR/_diag" ] && chmod 755 "$RUNNER_DIR/_diag"
