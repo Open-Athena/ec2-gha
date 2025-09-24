@@ -1,0 +1,116 @@
+name: Demo – GPU instance sweep
+on:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  id-token: write  # Required for AWS OIDC authentication
+  contents: read   # Required for actions/checkout
+jobs:
+  # Launch GPU instances with PyTorch DLAMIs
+  g4dn:
+    name: 🚀 g4dn.xlarge
+    uses: ./.github/workflows/runner.yml
+    with:
+      ec2_instance_type: g4dn.xlarge
+      ec2_image_id: ami-00dddcf8fefea182f  # Deep Learning OSS PyTorch 2.5.1 Ubuntu 22.04
+      instance_name: "gpu-sweep#$run g4dn"
+    secrets: inherit
+  g5:
+    name: 🚀 g5.xlarge
+    uses: ./.github/workflows/runner.yml
+    with:
+      ec2_instance_type: g5.xlarge
+      ec2_image_id: ami-00dddcf8fefea182f  # Deep Learning OSS PyTorch 2.5.1 Ubuntu 22.04
+      instance_name: "gpu-sweep#$run g5"
+    secrets: inherit
+  g6:
+    name: 🚀 g6.xlarge
+    uses: ./.github/workflows/runner.yml
+    with:
+      ec2_instance_type: g6.xlarge
+      ec2_image_id: ami-00dddcf8fefea182f  # Deep Learning OSS PyTorch 2.5.1 Ubuntu 22.04
+      instance_name: "gpu-sweep#$run g6"
+    secrets: inherit
+  g5g:
+    name: 🚀 g5g.xlarge
+    uses: ./.github/workflows/runner.yml
+    with:
+      ec2_instance_type: g5g.xlarge
+      ec2_image_id: ami-00cbe74a3dff23b9f  # Deep Learning ARM64 OSS PyTorch 2.5.1 Ubuntu 22.04
+      instance_name: "gpu-sweep#$run g5g"
+    secrets: inherit
+
+  # Test jobs for each GPU instance
+  test-g4dn:
+    name: 🔬 g4dn.xlarge
+    needs: g4dn
+    runs-on: ${{ needs.g4dn.outputs.id }}
+    steps:
+      - name: GPU Test
+        run: |
+          nvidia-smi
+          # Activate PyTorch conda environment
+          source /opt/conda/etc/profile.d/conda.sh
+          conda activate pytorch
+          python3 -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.cuda.is_available()}')"
+          python3 -c "import torch; print(f'GPU: {torch.cuda.get_device_name(0)}')"
+
+  test-g5:
+    name: 🔬 g5.xlarge
+    needs: g5
+    runs-on: ${{ needs.g5.outputs.id }}
+    steps:
+      - name: GPU Test
+        run: |
+          nvidia-smi
+          # Activate PyTorch conda environment
+          source /opt/conda/etc/profile.d/conda.sh
+          conda activate pytorch
+          python3 -c "import torch; print(f'PyTorch: {torch.__version__}, GPU: {torch.cuda.get_device_name(0)}')"
+
+  test-g6:
+    name: 🔬 g6.xlarge
+    needs: g6
+    runs-on: ${{ needs.g6.outputs.id }}
+    steps:
+      - name: GPU Test
+        run: |
+          nvidia-smi
+          # Activate PyTorch conda environment
+          source /opt/conda/etc/profile.d/conda.sh
+          conda activate pytorch
+          python3 -c "import torch; print(f'PyTorch: {torch.__version__}, GPU: {torch.cuda.get_device_name(0)}')"
+
+  test-g5g:
+    name: 🔬 g5g.xlarge
+    needs: g5g
+    runs-on: ${{ needs.g5g.outputs.id }}
+    steps:
+      - name: GPU Info
+        run: |
+          echo "=== GPU Instance Information ==="
+          echo "g5g.xlarge: AWS Graviton (ARM64) + NVIDIA T4g GPU"
+          nvidia-smi
+          echo ""
+          echo "=== PyTorch Test ==="
+          # Activate PyTorch conda environment
+          source /opt/conda/etc/profile.d/conda.sh
+          conda activate pytorch
+          python3 -c "import torch; print(f'PyTorch: {torch.__version__}')"
+          python3 -c "import torch; print(f'CUDA Available: {torch.cuda.is_available()}')"
+          python3 -c "import torch; print(f'CUDA Version: {torch.version.cuda}')"
+          python3 -c "import torch; print(f'GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"N/A\"}')"
+      - name: Basic GPU Test
+        run: |
+          source /opt/conda/etc/profile.d/conda.sh
+          conda activate pytorch
+          python3 -c "
+          import torch
+          device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+          print(f'Using device: {device}')
+          if device.type == 'cuda':
+              x = torch.randn(1000, 1000).to(device)
+              y = torch.randn(1000, 1000).to(device)
+              z = torch.matmul(x, y)
+              print(f'Matrix multiplication result shape: {z.shape}')
+          "
