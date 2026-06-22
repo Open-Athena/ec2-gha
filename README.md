@@ -126,6 +126,7 @@ Many of these fall back to corresponding `vars.*` (if not provided as `inputs`):
 - `runner_initial_grace_period` - Grace period in seconds before terminating instance if no jobs start (default: 180)
 - `runner_poll_interval` - How often (in seconds) to check termination conditions (default: 10)
 - `ssh_pubkey` - SSH public key (for [SSH access])
+- `vars.DOCKERHUB_USERNAME` and `secrets.DOCKERHUB_TOKEN` - Optional Docker Hub credentials used before building the local Docker action that launches the runner. The login step is skipped unless both are present. If you list secrets explicitly instead of using `secrets: inherit`, pass `DOCKERHUB_TOKEN` alongside `GH_SA_TOKEN`.
 
 ## Outputs <a id="outputs"></a>
 

@@ -19,6 +19,9 @@ on:
       GH_SA_TOKEN:
         description: "GitHub token with permissions to manage self-hosted runners"
         required: true
+      DOCKERHUB_TOKEN:
+        description: "Docker Hub token used to authenticate before building the local Docker action"
+        required: false
     inputs:
       action_ref:
         description: "ec2-gha Git ref (branch/tag/SHA) to checkout"
@@ -161,6 +164,31 @@ jobs:
           role-to-assume: ${{ inputs.ec2_launch_role || vars.EC2_LAUNCH_ROLE }}
           role-session-name: github-actions-session
           aws-region: ${{ inputs.aws_region }}
+
+      - name: Check Docker Hub credentials
+        id: dockerhub-auth
+        env:
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -n "${DOCKERHUB_USERNAME}" ] && [ -n "${DOCKERHUB_TOKEN}" ]; then
+            echo "enabled=true" >> "${GITHUB_OUTPUT}"
+          else
+            if [ -z "${DOCKERHUB_USERNAME}" ]; then
+              echo "Skipping Docker Hub login because vars.DOCKERHUB_USERNAME is not configured."
+            fi
+            if [ -z "${DOCKERHUB_TOKEN}" ]; then
+              echo "Skipping Docker Hub login because secrets.DOCKERHUB_TOKEN is not configured."
+            fi
+            echo "enabled=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Log in to Docker Hub
+        if: steps.dockerhub-auth.outputs.enabled == 'true'
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Create cloud runner
         id: aws-start
