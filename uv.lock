@@ -244,7 +244,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "boto3" },
-    { name = "gha-runner", git = "https://github.com/omsf/gha-runner.git?rev=8fbdacf05750dd12c652eb8cdf8d8adf76bb43e6" },
+    { name = "gha-runner", git = "https://github.com/Open-Athena/gha-runner.git?rev=v1" },
     { name = "moto", extras = ["ec2"], marker = "extra == 'test'" },
     { name = "pytest", marker = "extra == 'test'" },
     { name = "pytest-cov", marker = "extra == 'test'" },
@@ -256,8 +256,8 @@ provides-extras = ["test"]
 
 [[package]]
 name = "gha-runner"
-version = "0.7.0"
-source = { git = "https://github.com/omsf/gha-runner.git?rev=8fbdacf05750dd12c652eb8cdf8d8adf76bb43e6#8fbdacf05750dd12c652eb8cdf8d8adf76bb43e6" }
+version = "0.6.1.post49+g195de1b"
+source = { git = "https://github.com/Open-Athena/gha-runner.git?rev=v1#195de1b3cdcd42a6e90c5374d4509d112a96bdb2" }
 dependencies = [
     { name = "requests" },
 ]
