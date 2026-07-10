@@ -4,6 +4,7 @@ Run GitHub Actions on ephemeral EC2 instances.
 **TOC**
 <!-- toc -->
 - [Quick Start](#quick-start)
+- [Demos](#demos)
 - [Inputs](#inputs)
     - [Required](#required)
         - [`secrets.GH_SA_TOKEN`](#gh-sa-token)
@@ -12,8 +13,9 @@ Run GitHub Actions on ephemeral EC2 instances.
 - [Outputs](#outputs)
 - [Technical Details](#technical)
     - [Runner Lifecycle](#lifecycle)
-    - [Multi-Job Workflows](#multi-job)
-    - [How Termination Works](#termination)
+    - [Parallel Jobs (Multiple Instances)](#parallel)
+    - [Multi-Job Workflows (Sequential)](#multi-job)
+    - [Termination logic](#termination)
     - [CloudWatch Logs Integration](#cloudwatch)
     - [Debugging and Troubleshooting](#debugging)
         - [SSH Access](#ssh)
@@ -44,12 +46,35 @@ jobs:
     # - `secrets.GH_SA_TOKEN` (GitHub token with repo admin access)
     # - `vars.EC2_LAUNCH_ROLE` (role with GitHub OIDC access to this repo)
     secrets: inherit
+    with:
+      ec2_instance_type: g4dn.xlarge
+      ec2_image_id: ami-00096836009b16a22  # Deep Learning OSS Nvidia Driver AMI GPU PyTorch
   gpu-test:
     needs: ec2
-    runs-on: ${{ needs.ec2.outputs.instance }}
+    runs-on: ${{ needs.ec2.outputs.id }}
     steps:
       - run: nvidia-smi  # GPU node!
 ```
+
+## Demos <a id="demos"></a>
+
+Example workflows demonstrating ec2-gha capabilities are in [`.github/workflows/`](.github/workflows/):
+
+[![](img/demos%2325%201.png)][demos#25]
+
+- [`demo-dbg-minimal.yml`](.github/workflows/demo-dbg-minimal.yml) - Configurable debugging instance
+- [`demo-gpu-minimal.yml`](.github/workflows/demo-gpu-minimal.yml) - Basic GPU test
+- [`demo-cpu-sweep.yml`](.github/workflows/demo-cpu-sweep.yml) - OS/arch matrix (Ubuntu, Debian, AL2/AL2023 on x86/ARM)
+- [`demo-gpu-sweep.yml`](.github/workflows/demo-gpu-sweep.yml) - GPU instances (g4dn, g5, g6, g5g) with PyTorch
+- [`demo-instances-mtx.yml`](.github/workflows/demo-instances-mtx.yml) - Multiple instances for parallel jobs
+- [`demo-runners-mtx.yml`](.github/workflows/demo-runners-mtx.yml) - Multiple runners on single instance
+- [`demo-jobs-split.yml`](.github/workflows/demo-jobs-split.yml) - Different job types on separate instances
+
+### Test Suite
+- [`demos.yml`](.github/workflows/demos.yml) - Runs all demos for regression testing
+- [`test-disk-full.yml`](.github/workflows/test-disk-full.yml) - Stress test for disk-full scenarios with configurable fill strategies
+
+See [`.github/workflows/README.md`](.github/workflows/README.md) for detailed descriptions of each demo.
 
 ## Inputs <a id="inputs"></a>
 
@@ -79,29 +104,35 @@ The `EC2_LAUNCH_ROLE` is passed to [aws-actions/configure-aws-credentials]; if y
 
 Many of these fall back to corresponding `vars.*` (if not provided as `inputs`):
 
-- `action_ref` - ec2-gha Git ref to checkout (branch/tag/SHA); auto-detected if not specified
+- `action_ref` - ec2-gha Git ref to checkout (branch/tag/SHA); automatically resolved to a SHA for security
+- `aws_region` - AWS region for EC2 instances (falls back to `vars.AWS_REGION`, default: `us-east-1`)
 - `cloudwatch_logs_group` - CloudWatch Logs group name for streaming logs (falls back to `vars.CLOUDWATCH_LOGS_GROUP`)
 - `ec2_home_dir` - Home directory (default: `/home/ubuntu`)
-- `ec2_image_id` - AMI ID (default: Deep Learning AMI)
+- `ec2_image_id` - AMI ID (default: Ubuntu 24.04 LTS)
 - `ec2_instance_profile` - IAM instance profile name for EC2 instances
   - Useful for on-instance debugging [via SSH][SSH access]
   - Required for [CloudWatch logging][cw]
   - Falls back to `vars.EC2_INSTANCE_PROFILE`
   - See [Appendix: IAM Role Setup](#iam-setup-appendix) for more details and sample setup code
-- `ec2_instance_type` - Instance type (default: `g4dn.xlarge`)
+- `ec2_instance_type` - Instance type (default: `t3.medium`)
 - `ec2_key_name` - EC2 key pair name (for [SSH access])
-- `ec2_root_device_size` - Root device size in GB (default: 0 = use AMI default)
+- `instance_count` - Number of instances to create (default: 1, for parallel jobs)
+- `instance_name` - Name tag template for EC2 instances. Uses Python string.Template format with variables: `$repo`, `$name` (workflow filename stem), `$workflow` (full workflow name), `$ref`, `$run` (number), `$idx` (0-based instance index for multi-instance launches). Default: `$repo/$name#$run` (or `$repo/$name#$run $idx` for multi-instance)
+- `debug` - Debug mode: `false`=off, `true`/`trace`=set -x only, number=set -x + sleep N minutes before shutdown (for troubleshooting)
+- `ec2_root_device_size` - Root disk size in GB: `0`=AMI default, `+N`=AMI+N GB for testing (e.g., `+2` for AMI size + 2GB), or explicit size in GB
 - `ec2_security_group_id` - Security group ID (required for [SSH access], should expose inbound port 22)
 - `max_instance_lifetime` - Maximum instance lifetime in minutes before automatic shutdown (falls back to `vars.MAX_INSTANCE_LIFETIME`, default: 360 = 6 hours; generally should not be relevant, instances shut down within 1-2mins of jobs completing)
-- `runner_grace_period` - Grace period in seconds before terminating (default: 120)
+- `runner_grace_period` - Grace period in seconds before terminating after last job completes (default: 60)
 - `runner_initial_grace_period` - Grace period in seconds before terminating instance if no jobs start (default: 180)
+- `runner_poll_interval` - How often (in seconds) to check termination conditions (default: 10)
 - `ssh_pubkey` - SSH public key (for [SSH access])
 
 ## Outputs <a id="outputs"></a>
 
-| Name | Description                                 |
-|------|---------------------------------------------|
-| id   | Value to pass to subsequent jobs' `runs-on` |
+| Name | Description                                                              |
+|------|--------------------------------------------------------------------------|
+| id   | Single runner label for `runs-on` (when `instance_count=1`)            |
+| mtx | JSON array of objects for matrix strategies (each has: idx, id, instance_id, instance_idx, runner_idx) |
 
 ## Technical Details <a id="technical"></a>
 
@@ -114,7 +145,34 @@ This workflow creates EC2 instances with GitHub Actions runners that:
 - Use [GitHub's native runner hooks][hooks] for job tracking
 - Optionally support [SSH access] and [CloudWatch logging][cw] (for debugging)
 
-### Multi-Job Workflows <a id="multi-job"></a>
+### Parallel Jobs (Multiple Instances) <a id="parallel"></a>
+
+Create multiple EC2 instances for parallel execution using `instance_count`:
+
+```yaml
+jobs:
+  ec2:
+    uses: Open-Athena/ec2-gha/.github/workflows/runner.yml@main
+    secrets: inherit
+    with:
+      instance_count: "3"  # Create 3 instances
+
+  parallel-jobs:
+    needs: ec2
+    strategy:
+      matrix:
+        runner: ${{ fromJson(needs.ec2.outputs.mtx) }}
+    runs-on: ${{ matrix.runner.id }}
+    steps:
+      - run: echo "Running on runner ${{ matrix.runner.idx }} (instance ${{ matrix.runner.instance_idx }})"
+```
+
+Each instance gets a unique runner label and can execute jobs independently. This is useful for:
+- Matrix builds that need isolated environments
+- Parallel testing across different configurations
+- Distributed workloads
+
+### Multi-Job Workflows (Sequential) <a id="multi-job"></a>
 
 The runner supports multiple sequential jobs on the same instance, e.g.:
 
@@ -124,36 +182,55 @@ jobs:
     uses: Open-Athena/ec2-gha/.github/workflows/runner.yml@main
     secrets: inherit
     with:
-      runner_grace_period: "120"  # 2 minutes between jobs
+      runner_grace_period: "120"  # Max idle time before termination (seconds)
 
   prepare:
     needs: ec2
-    runs-on: ${{ needs.ec2.outputs.instance }}
+    runs-on: ${{ needs.ec2.outputs.id }}
     steps:
       - run: echo "Preparing environment"
 
   train:
     needs: [ec2, prepare]
-    runs-on: ${{ needs.ec2.outputs.instance }}
+    runs-on: ${{ needs.ec2.outputs.id }}
     steps:
       - run: echo "Training model"
 
   evaluate:
     needs: [ec2, train]
-    runs-on: ${{ needs.ec2.outputs.instance }}
+    runs-on: ${{ needs.ec2.outputs.id }}
     steps:
       - run: echo "Evaluating results"
 ```
-(see also [demo-job-seq], [demo-archs], [demo-matrix-wide])
+(see also demo workflows in [`.github/workflows/`](.github/workflows/))
 
-### How Termination Works <a id="termination"></a>
+### Termination logic <a id="termination"></a>
 
-1. [GitHub Actions runner hooks][hooks] track job lifecycle events
-2. When a job completes, the hook checks if other jobs are running
-3. If no jobs are active, a termination check is scheduled after the grace period
-4. The instance terminates if still idle when the check runs
-5. New jobs starting within the grace period cancel the termination
-6. Before shutdown, the runner process is gracefully stopped to remove itself from GitHub
+The runner uses [GitHub Actions runner hooks][hooks] to track job lifecycle and determine when to terminate:
+
+#### Job Tracking
+- **Start/End Hooks**: Creates/removes JSON files in `/var/run/github-runner-jobs/` when jobs start/end
+- **Heartbeat Mechanism**: Active jobs update their file timestamps periodically to detect stuck jobs
+- **Process Monitoring**: Checks both Runner.Listener and Runner.Worker processes to verify jobs are truly running
+- **Activity Tracking**: Updates `/var/run/github-runner-last-activity` timestamp on job events
+
+#### Termination Conditions
+The systemd timer checks every `runner_poll_interval` seconds (default: 10s) and terminates when:
+1. No active jobs are running
+2. Idle time exceeds the grace period:
+   - `runner_initial_grace_period` (default: 180s) - Before first job
+   - `runner_grace_period` (default: 60s) - Between jobs
+
+#### Robustness Features
+- **Stale Job Detection**: Removes job files older than 3× poll interval (likely disk full)
+- **Worker Process Detection**: Distinguishes between idle runners and active jobs
+- **Multiple Shutdown Methods**: Uses robust termination with fallback to `shutdown -h now`
+
+#### Clean Shutdown Sequence
+1. Stop runner processes gracefully (SIGINT)
+2. Deregister runners from GitHub
+3. Flush CloudWatch logs (if configured)
+4. Execute shutdown with multiple fallback methods
 
 ### CloudWatch Logs Integration <a id="cloudwatch"></a>
 
@@ -237,17 +314,17 @@ Once connected to the instance:
 
 - Uses non-ephemeral runners to support instance-reuse across jobs
 - Uses activity-based termination with systemd timer checks every 30 seconds
-- Terminates only after runner_grace_period seconds of inactivity (no race conditions)
-- Sets maximum instance lifetime (configurable via `max_instance_lifetime`, default: 6 hours)
+- Terminates only after `runner_grace_period` seconds of inactivity (no race conditions)
+- Also terminates after `max_instance_lifetime`, as a fail-safe (default: 6 hours)
 - Supports custom AMIs with pre-installed dependencies
 
 ### Default AWS Tags <a id="tags"></a>
 
 The action automatically adds these tags to EC2 instances (unless already provided):
 - `Name`: Auto-generated from repository/workflow/run-number (e.g., "my-repo/test-workflow/#123")
-- `repository`: GitHub repository full name
-- `workflow`: Workflow name
-- `gha_url`: Direct link to the GitHub Actions run
+- `Repository`: GitHub repository full name
+- `Workflow`: Workflow name
+- `URL`: Direct link to the GitHub Actions run
 
 These help with debugging and cost tracking. You can override any of these by providing your own tags with the same keys.
 
@@ -526,19 +603,98 @@ gh variable set EC2_INSTANCE_PROFILE --body "GitHubRunnerEC2Profile"
 </details>
 
 ## Acknowledgements <a id="acks"></a>
-This repo borrows from or reuses:
-- [omsf/start-aws-gha-runner] (upstream; this fork adds self-termination and various features)
-- [related-sciences/gce-github-runner] (self-terminating GCE runner, using [job hooks][hooks])
+- This repo forked [omsf/start-aws-gha-runner]; it adds self-termination (bypassing [omsf/stop-aws-gha-runner]) and various features.
+- [machulav/ec2-github-runner] is similar, [requires][egr ex] separate "start" and "stop" jobs
+- [related-sciences/gce-github-runner] is a self-terminating GCE runner, using [job hooks][hooks])
+
+Here's a diff porting [ec2-github-runner][machulav/ec2-github-runner]'s README [example][egr ex] to ec2-gha:
+```diff
+ name: do-the-job
+ on: pull_request
+ jobs:
+-  start-runner:
++  ec2:
+     name: Start self-hosted EC2 runner
+-    runs-on: ubuntu-latest
+-    outputs:
+-      label: ${{ steps.start-ec2-runner.outputs.label }}
+-      ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
+-    steps:
+-      - name: Configure AWS credentials
+-        uses: aws-actions/configure-aws-credentials@v4
++    uses: Open-Athena/ec2-gha/.github/workflows/runner.yml@v2
+         with:
+-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+-          aws-region: ${{ secrets.AWS_REGION }}
+-      - name: Start EC2 runner
+-        id: start-ec2-runner
+-        uses: machulav/ec2-github-runner@v2
+-        with:
+-          mode: start
+-          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+-          ec2-image-id: ami-123
+-          ec2-instance-type: t3.nano
+-          subnet-id: subnet-123
+-          security-group-id: sg-123
+-          iam-role-name: my-role-name # optional, requires additional permissions
+-          aws-resource-tags: > # optional, requires additional permissions
+-            [
+-              {"Key": "Name", "Value": "ec2-github-runner"},
+-              {"Key": "GitHubRepository", "Value": "${{ github.repository }}"}
+-            ]
+-          block-device-mappings: > # optional, to customize EBS volumes
+-            [
+-              {"DeviceName": "/dev/sda1", "Ebs": {"VolumeSize": 100, "VolumeType": "gp3"}}
+-            ]
++      ec2_image_id: ami-123
++      ec2_instance_type: t3.nano
++      ec2_root_device_size: 100
++      ec2_subnet_id: subnet-123
++      ec2_security_group_id: sg-123
++      ec2_launch_role: my-role-name
++    secrets:
++      GH_SA_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+   do-the-job:
+     name: Do the job on the runner
+     needs: start-runner # required to start the main job when the runner is ready
+     runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+     steps:
+       - name: Hello World
+         run: echo 'Hello World!'
+-  stop-runner:
+-    name: Stop self-hosted EC2 runner
+-    needs:
+-      - start-runner # required to get output from the start-runner job
+-      - do-the-job # required to wait when the main job is done
+-    runs-on: ubuntu-latest
+-    if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
+-    steps:
+-      - name: Configure AWS credentials
+-        uses: aws-actions/configure-aws-credentials@v4
+-        with:
+-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+-          aws-region: ${{ secrets.AWS_REGION }}
+-      - name: Stop EC2 runner
+-        uses: machulav/ec2-github-runner@v2
+-        with:
+-          mode: stop
+-          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+-          label: ${{ needs.start-runner.outputs.label }}
+-          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
+```
 
 [`runner.yml`]: .github/workflows/runner.yml
-[demo-job-seq]: .github/workflows/demo-job-seq.yml
-[demo-archs]: .github/workflows/demo-archs.yml
-[demo-matrix-wide]: .github/workflows/demo-matrix-wide.yml
 [aws-actions/configure-aws-credentials]: https://github.com/aws-actions/configure-aws-credentials
 [hooks]: https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/run-scripts
 [omsf/start-aws-gha-runner]: https://github.com/omsf/start-aws-gha-runner
+[omsf/stop-aws-gha-runner]: https://github.com/omsf/stop-aws-gha-runner
+[machulav/ec2-github-runner]: https://github.com/machulav/ec2-github-runner
+[egr ex]: https://github.com/machulav/ec2-github-runner?tab=readme-ov-file#example
 [related-sciences/gce-github-runner]: https://github.com/related-sciences/gce-github-runner
 [reusable workflow]: https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows#calling-a-reusable-workflow
 [file an issue]: https://github.com/Open-Athena/ec2-gha/issues/new/choose
 [SSH access]: #ssh
 [cw]: #cloudwatch
+[demos#25]: https://github.com/Open-Athena/ec2-gha/actions/runs/17004697889

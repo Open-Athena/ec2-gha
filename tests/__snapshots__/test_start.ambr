@@ -1,358 +1,287 @@
 # serializer version: 1
+# name: test_build_aws_params
+  dict({
+    'IamInstanceProfile': dict({
+      'Name': 'test',
+    }),
+    'ImageId': 'ami-0772db4c976d21e9b',
+    'InstanceInitiatedShutdownBehavior': 'terminate',
+    'InstanceType': 't2.micro',
+    'MaxCount': 1,
+    'MinCount': 1,
+    'SecurityGroupIds': list([
+      'test',
+    ]),
+    'SubnetId': 'test',
+    'TagSpecifications': list([
+      dict({
+        'ResourceType': 'instance',
+        'Tags': list([
+          dict({
+            'Key': 'Name',
+            'Value': 'test',
+          }),
+          dict({
+            'Key': 'Owner',
+            'Value': 'test',
+          }),
+          dict({
+            'Key': 'Repository',
+            'Value': 'Open-Athena/ec2-gha',
+          }),
+          dict({
+            'Key': 'Workflow',
+            'Value': 'CI',
+          }),
+          dict({
+            'Key': 'URL',
+            'Value': 'https://github.com/Open-Athena/ec2-gha/actions/runs/16725250800',
+          }),
+        ]),
+      }),
+    ]),
+    'UserData': '''
+      #!/bin/bash
+      set -e
+      
+      # Essential variables from template substitution
+      export debug=""
+      export homedir="/home/ec2-user"
+      export repo="omsf-eco-infra/awsinfratesting"
+      export runner_tokens="test"
+      export runner_labels="label"
+      export cloudwatch_logs_group=""
+      export runner_grace_period="61"
+      export runner_initial_grace_period="181"
+      export runner_poll_interval="11"
+      export runner_registration_timeout="300"
+      export max_instance_lifetime="360"
+      export runners_per_instance="1"
+      export runner_release="test.tar.gz"
+      export ssh_pubkey="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host"
+      export instance_name=""
+      export action_sha="abc123def456789012345678901234567890abcd"
+      
+      # Custom userdata from user (if any)
+      export userdata=""
+      export script="echo 'Hello, World!'"
+      
+      # Log prefixes
+      export log_prefix_job_started="Job started:"
+      export log_prefix_job_completed="Job completed:"
+      
+      # Fetch and execute the main script from GitHub
+      # action_sha has already been resolved from action_ref in Python for security and consistency
+      SCRIPT_URL="https://raw.githubusercontent.com/Open-Athena/ec2-gha/${action_sha}/src/ec2_gha/scripts/runner-setup.sh"
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Fetching main script from: $SCRIPT_URL (SHA: ${action_sha})" | tee -a /var/log/runner-setup.log
+      
+      # Try to download with retries
+      for i in {1..5}; do
+        if curl -sSL "$SCRIPT_URL" -o /tmp/runner-setup.sh; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] Successfully downloaded runner setup script (attempt $i)" | tee -a /var/log/runner-setup.log
+          break
+        elif wget -q "$SCRIPT_URL" -O /tmp/runner-setup.sh; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] Successfully downloaded runner setup script (attempt $i)" | tee -a /var/log/runner-setup.log
+          break
+        else
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failed to download script (attempt $i), retrying..." | tee -a /var/log/runner-setup.log
+          sleep 2
+        fi
+      
+        if [ $i -eq 5 ]; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Failed to download runner setup script after 5 attempts" | tee -a /var/log/runner-setup.log
+          shutdown -h now
+          exit 1
+        fi
+      done
+      
+      # Verify we got something
+      if [ ! -s /tmp/runner-setup.sh ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Downloaded script is empty" | tee -a /var/log/runner-setup.log
+        shutdown -h now
+        exit 1
+      fi
+      
+      # Make it executable and run it
+      chmod +x /tmp/runner-setup.sh
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Executing runner setup script" | tee -a /var/log/runner-setup.log
+      exec /tmp/runner-setup.sh
+    ''',
+  })
+# ---
+# name: test_build_aws_params_with_idx
+  dict({
+    'IamInstanceProfile': dict({
+      'Name': 'test',
+    }),
+    'ImageId': 'ami-0772db4c976d21e9b',
+    'InstanceInitiatedShutdownBehavior': 'terminate',
+    'InstanceType': 't2.micro',
+    'MaxCount': 1,
+    'MinCount': 1,
+    'SecurityGroupIds': list([
+      'test',
+    ]),
+    'SubnetId': 'test',
+    'TagSpecifications': list([
+      dict({
+        'ResourceType': 'instance',
+        'Tags': list([
+          dict({
+            'Key': 'Name',
+            'Value': 'ec2-gha/test#42 0',
+          }),
+          dict({
+            'Key': 'Repository',
+            'Value': 'Open-Athena/ec2-gha',
+          }),
+          dict({
+            'Key': 'Workflow',
+            'Value': 'CI',
+          }),
+          dict({
+            'Key': 'URL',
+            'Value': 'https://github.com/Open-Athena/ec2-gha/actions/runs/16725250800',
+          }),
+        ]),
+      }),
+    ]),
+    'UserData': '''
+      #!/bin/bash
+      set -e
+      
+      # Essential variables from template substitution
+      export debug=""
+      export homedir="/home/ec2-user"
+      export repo="omsf-eco-infra/awsinfratesting"
+      export runner_tokens="test"
+      export runner_labels="label"
+      export cloudwatch_logs_group=""
+      export runner_grace_period="61"
+      export runner_initial_grace_period="181"
+      export runner_poll_interval="11"
+      export runner_registration_timeout="300"
+      export max_instance_lifetime="360"
+      export runners_per_instance="1"
+      export runner_release="test.tar.gz"
+      export ssh_pubkey="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host"
+      export instance_name=""
+      export action_sha="abc123def456789012345678901234567890abcd"
+      
+      # Custom userdata from user (if any)
+      export userdata=""
+      export script="echo 'Hello, World!'"
+      
+      # Log prefixes
+      export log_prefix_job_started="Job started:"
+      export log_prefix_job_completed="Job completed:"
+      
+      # Fetch and execute the main script from GitHub
+      # action_sha has already been resolved from action_ref in Python for security and consistency
+      SCRIPT_URL="https://raw.githubusercontent.com/Open-Athena/ec2-gha/${action_sha}/src/ec2_gha/scripts/runner-setup.sh"
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Fetching main script from: $SCRIPT_URL (SHA: ${action_sha})" | tee -a /var/log/runner-setup.log
+      
+      # Try to download with retries
+      for i in {1..5}; do
+        if curl -sSL "$SCRIPT_URL" -o /tmp/runner-setup.sh; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] Successfully downloaded runner setup script (attempt $i)" | tee -a /var/log/runner-setup.log
+          break
+        elif wget -q "$SCRIPT_URL" -O /tmp/runner-setup.sh; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] Successfully downloaded runner setup script (attempt $i)" | tee -a /var/log/runner-setup.log
+          break
+        else
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failed to download script (attempt $i), retrying..." | tee -a /var/log/runner-setup.log
+          sleep 2
+        fi
+      
+        if [ $i -eq 5 ]; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Failed to download runner setup script after 5 attempts" | tee -a /var/log/runner-setup.log
+          shutdown -h now
+          exit 1
+        fi
+      done
+      
+      # Verify we got something
+      if [ ! -s /tmp/runner-setup.sh ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Downloaded script is empty" | tee -a /var/log/runner-setup.log
+        shutdown -h now
+        exit 1
+      fi
+      
+      # Make it executable and run it
+      chmod +x /tmp/runner-setup.sh
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Executing runner setup script" | tee -a /var/log/runner-setup.log
+      exec /tmp/runner-setup.sh
+    ''',
+  })
+# ---
 # name: test_build_user_data
   '''
   #!/bin/bash
   set -e
   
-  echo 'custom userdata'
+  # Essential variables from template substitution
+  export debug=""
+  export homedir="/home/ec2-user"
+  export repo="omsf-eco-infra/awsinfratesting"
+  export runner_tokens="test"
+  export runner_labels="label"
+  export cloudwatch_logs_group=""
+  export runner_grace_period="61"
+  export runner_initial_grace_period="181"
+  export runner_poll_interval="11"
+  export runner_registration_timeout="300"
+  export max_instance_lifetime="360"
+  export runners_per_instance="1"
+  export runner_release="test.tar.gz"
+  export ssh_pubkey="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host"
+  export instance_name=""
+  export action_sha="abc123def456789012345678901234567890abcd"
   
-  # Set up maximum lifetime timeout - do this early to ensure cleanup
-  MAX_LIFETIME_MINUTES=360
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Setting up maximum lifetime timeout: ${MAX_LIFETIME_MINUTES} minutes"
-  nohup bash -c "sleep ${MAX_LIFETIME_MINUTES}m && echo '[$(date)] Maximum lifetime reached' && shutdown -h now" > /var/log/max-lifetime.log 2>&1 &
+  # Custom userdata from user (if any)
+  export userdata=""
+  export script="echo 'Hello, World!'"
   
-  # Configure CloudWatch Logs if enabled
-  if [ "" != "" ]; then
-      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Installing CloudWatch agent"
-      # Use a subshell to prevent CloudWatch failures from stopping the entire script
-      (
+  # Log prefixes
+  export log_prefix_job_started="Job started:"
+  export log_prefix_job_completed="Job completed:"
   
-      # Wait for dpkg lock to be released (up to 2 minutes)
-      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Waiting for dpkg lock to be released..."
-      timeout=120
-      while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
-          if [ $timeout -le 0 ]; then
-              echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: dpkg lock timeout, proceeding anyway"
-              break
-          fi
-          echo "[$(date '+%Y-%m-%d %H:%M:%S')] dpkg is locked, waiting... ($timeout seconds remaining)"
-          sleep 5
-          timeout=$((timeout - 5))
-      done
+  # Fetch and execute the main script from GitHub
+  # action_sha has already been resolved from action_ref in Python for security and consistency
+  SCRIPT_URL="https://raw.githubusercontent.com/Open-Athena/ec2-gha/${action_sha}/src/ec2_gha/scripts/runner-setup.sh"
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Fetching main script from: $SCRIPT_URL (SHA: ${action_sha})" | tee -a /var/log/runner-setup.log
   
-      # Download and install CloudWatch agent
-      wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
-      dpkg -i -E ./amazon-cloudwatch-agent.deb
-      rm amazon-cloudwatch-agent.deb
+  # Try to download with retries
+  for i in {1..5}; do
+    if curl -sSL "$SCRIPT_URL" -o /tmp/runner-setup.sh; then
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Successfully downloaded runner setup script (attempt $i)" | tee -a /var/log/runner-setup.log
+      break
+    elif wget -q "$SCRIPT_URL" -O /tmp/runner-setup.sh; then
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Successfully downloaded runner setup script (attempt $i)" | tee -a /var/log/runner-setup.log
+      break
+    else
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failed to download script (attempt $i), retrying..." | tee -a /var/log/runner-setup.log
+      sleep 2
+    fi
   
-      # Configure CloudWatch agent
-      cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'EOF'
-  {
-    "agent": {
-      "run_as_user": "cwagent"
-    },
-    "logs": {
-      "logs_collected": {
-        "files": {
-          "collect_list": [
-            {
-              "file_path": "/var/log/runner-setup.log",
-              "log_group_name": "",
-              "log_stream_name": "{instance_id}/runner-setup",
-              "timezone": "UTC"
-            },
-            {
-              "file_path": "/tmp/job-started-hook.log",
-              "log_group_name": "",
-              "log_stream_name": "{instance_id}/job-started",
-              "timezone": "UTC"
-            },
-            {
-              "file_path": "/tmp/job-completed-hook.log",
-              "log_group_name": "",
-              "log_stream_name": "{instance_id}/job-completed",
-              "timezone": "UTC"
-            },
-            {
-              "file_path": "/tmp/termination-check.log",
-              "log_group_name": "",
-              "log_stream_name": "{instance_id}/termination",
-              "timezone": "UTC"
-            },
-            {
-              "file_path": "/home/test-user/_diag/Runner_**.log",
-              "log_group_name": "",
-              "log_stream_name": "{instance_id}/runner-diag",
-              "timezone": "UTC"
-            },
-            {
-              "file_path": "/home/test-user/_diag/Worker_**.log",
-              "log_group_name": "",
-              "log_stream_name": "{instance_id}/worker-diag",
-              "timezone": "UTC"
-            }
-          ]
-        }
-      }
-    }
-  }
-  EOF
+    if [ $i -eq 5 ]; then
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Failed to download runner setup script after 5 attempts" | tee -a /var/log/runner-setup.log
+      shutdown -h now
+      exit 1
+    fi
+  done
   
-      # Start CloudWatch agent
-      /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
-          -a fetch-config \
-          -m ec2 \
-          -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json \
-          -s
-  
-      echo "[$(date '+%Y-%m-%d %H:%M:%S')] CloudWatch agent started"
-      ) || echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: CloudWatch agent installation failed, continuing without it"
+  # Verify we got something
+  if [ ! -s /tmp/runner-setup.sh ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Downloaded script is empty" | tee -a /var/log/runner-setup.log
+    shutdown -h now
+    exit 1
   fi
   
-  # Configure SSH access if public key provided
-  if [ -n "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host" ]; then
-      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Configuring SSH access"
-  
-      # Determine the default user based on the home directory owner
-      DEFAULT_USER=$(stat -c "%U" "/home/test-user" 2>/dev/null || echo "root")
-  
-      # Create .ssh directory if it doesn't exist
-      mkdir -p "/home/test-user/.ssh"
-      chmod 700 "/home/test-user/.ssh"
-  
-      # Add the public key to authorized_keys
-      echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@host" >> "/home/test-user/.ssh/authorized_keys"
-      chmod 600 "/home/test-user/.ssh/authorized_keys"
-  
-      # Set proper ownership
-      if [ "$DEFAULT_USER" != "root" ]; then
-          chown -R "$DEFAULT_USER:$DEFAULT_USER" "/home/test-user/.ssh"
-      fi
-  
-      echo "[$(date '+%Y-%m-%d %H:%M:%S')] SSH key added for user $DEFAULT_USER"
-  fi
-  
-  # Redirect runner setup logs to a file for CloudWatch
-  exec >> /var/log/runner-setup.log 2>&1
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] GitHub runner setup starting"
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Working directory: /home/test-user"
-  cd "/home/test-user"
-  echo "echo 'test script'" > pre-runner-script.sh
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running pre-runner script"
-  source pre-runner-script.sh
-  export RUNNER_ALLOW_RUNASROOT=1
-  # We will get the latest release from the GitHub API
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Downloading runner from: https://example.com/runner.tar.gz"
-  curl -L https://example.com/runner.tar.gz -o runner.tar.gz
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Extracting runner"
-  # `--no-overwrite-dir` is important, otherwise `/home/test-user` ends up `chown`'d to `1001:docker`, and `sshd` will refuse connection attempts to `/home/test-user`
-  tar --no-overwrite-dir -xzf runner.tar.gz
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Setting up job tracking scripts"
-  # Create minimal job tracking scripts inline
-  cat > /usr/local/bin/job-started-hook.sh << 'EOFS'
-  #!/bin/bash
-  exec >> /tmp/job-started-hook.log 2>&1
-  echo "[$(date)] Job STARTED  : ${GITHUB_WORKFLOW}/${GITHUB_JOB} (Run: ${GITHUB_RUN_ID}/${GITHUB_RUN_NUMBER}, Attempt: ${GITHUB_RUN_ATTEMPT})"
-  echo "  Repository: ${GITHUB_REPOSITORY}"
-  echo "  Runner: ${RUNNER_NAME}"
-  JOB_TRACK_DIR="/var/run/github-runner-jobs"
-  mkdir -p "${JOB_TRACK_DIR}"
-  echo "{\"job_id\":\"${GITHUB_JOB}\",\"run_id\":\"${GITHUB_RUN_ID}\",\"workflow\":\"${GITHUB_WORKFLOW}\",\"status\":\"running\"}" > "${JOB_TRACK_DIR}/${GITHUB_RUN_ID}-${GITHUB_JOB}.job"
-  # Update activity timestamp
-  touch /var/run/github-runner-last-activity
-  EOFS
-  
-  cat > /usr/local/bin/job-completed-hook.sh << 'EOFC'
-  #!/bin/bash
-  exec >> /tmp/job-completed-hook.log 2>&1
-  echo "[$(date)] Job COMPLETED: ${GITHUB_WORKFLOW}/${GITHUB_JOB} (Run: ${GITHUB_RUN_ID}/${GITHUB_RUN_NUMBER}, Attempt: ${GITHUB_RUN_ATTEMPT})"
-  echo "  Repository: ${GITHUB_REPOSITORY}"
-  echo "  Runner: ${RUNNER_NAME}"
-  JOB_TRACK_DIR="/var/run/github-runner-jobs"
-  if [ -f "${JOB_TRACK_DIR}/${GITHUB_RUN_ID}-${GITHUB_JOB}.job" ]; then
-      sed -i 's/"status":"running"/"status":"completed"/' "${JOB_TRACK_DIR}/${GITHUB_RUN_ID}-${GITHUB_JOB}.job"
-  fi
-  # Count remaining running jobs
-  RUNNING_JOBS=$(grep -l '"status":"running"' "${JOB_TRACK_DIR}"/*.job 2>/dev/null | wc -l || echo 0)
-  echo "  Running jobs remaining: ${RUNNING_JOBS}"
-  # Update activity timestamp
-  touch /var/run/github-runner-last-activity
-  EOFC
-  
-  cat > /usr/local/bin/check-runner-termination.sh << 'EOFT'
-  #!/bin/bash
-  exec >> /tmp/termination-check.log 2>&1
-  echo "[$(date)] Checking termination conditions"
-  
-  ACTIVITY_FILE="/var/run/github-runner-last-activity"
-  GRACE_PERIOD="${RUNNER_GRACE_PERIOD:-120}"
-  INITIAL_GRACE_PERIOD="${RUNNER_INITIAL_GRACE_PERIOD:-180}"
-  JOB_TRACK_DIR="/var/run/github-runner-jobs"
-  
-  # Check if activity file exists
-  if [ ! -f "${ACTIVITY_FILE}" ]; then
-      echo "[$(date)] WARNING: No activity file found, creating it now"
-      touch "${ACTIVITY_FILE}"
-  fi
-  
-  # Get last activity time and current time
-  LAST_ACTIVITY=$(stat -c %Y "${ACTIVITY_FILE}" 2>/dev/null || echo 0)
-  NOW=$(date +%s)
-  IDLE_TIME=$((NOW - LAST_ACTIVITY))
-  
-  # Check if any jobs have ever run
-  if ls "${JOB_TRACK_DIR}"/*.job 2>/dev/null | grep -q .; then
-      JOBS_HAVE_RUN=true
-      CURRENT_GRACE_PERIOD="${GRACE_PERIOD}"
-  else
-      JOBS_HAVE_RUN=false
-      CURRENT_GRACE_PERIOD="${INITIAL_GRACE_PERIOD}"
-  fi
-  
-  echo "[$(date)] Last activity: $(date -d @${LAST_ACTIVITY} '+%Y-%m-%d %H:%M:%S')"
-  echo "[$(date)] Current time: $(date '+%Y-%m-%d %H:%M:%S')"
-  echo "[$(date)] Idle time: ${IDLE_TIME} seconds (grace period: ${CURRENT_GRACE_PERIOD} seconds)"
-  echo "[$(date)] Jobs have run: ${JOBS_HAVE_RUN}"
-  
-  # Check for running jobs first
-  RUNNING_JOBS=$(grep -l '"status":"running"' "${JOB_TRACK_DIR}"/*.job 2>/dev/null | wc -l || echo 0)
-  echo "[$(date)] Running jobs: ${RUNNING_JOBS}"
-  
-  # Show status of each job for debugging
-  echo "[$(date)] Current job files:"
-  for job_file in "${JOB_TRACK_DIR}"/*.job; do
-      if [ -f "${job_file}" ]; then
-          job_status=$(grep -o '"status":"[^"]*"' "${job_file}" || echo "unknown")
-          echo "[$(date)]   $(basename "${job_file}"): ${job_status}"
-      fi
-  done || echo "[$(date)]   No job files found"
-  
-  # Never terminate if jobs are running
-  if [ "${RUNNING_JOBS}" -gt 0 ]; then
-      echo "[$(date)] Jobs are still running, not checking idle time"
-  elif [ "${IDLE_TIME}" -gt "${CURRENT_GRACE_PERIOD}" ]; then
-      echo "[$(date)] No running jobs and no activity for ${IDLE_TIME} seconds, proceeding with termination"
-  
-      # Try to remove runner from GitHub first
-      if [ -f "/home/test-user/config.sh" ]; then
-          echo "[$(date)] Removing runner from GitHub"
-          cd "/home/test-user"
-          # Stop the runner service
-          RUNNER_PID=$(pgrep -f "Runner.Listener" | head -1)
-          if [ -n "${RUNNER_PID}" ]; then
-              echo "[$(date)] Stopping runner PID ${RUNNER_PID}"
-              kill -INT "${RUNNER_PID}" 2>/dev/null || true
-              # Wait for it to stop
-              for i in {1..10}; do
-                  if ! kill -0 "${RUNNER_PID}" 2>/dev/null; then
-                      echo "[$(date)] Runner stopped"
-                      break
-                  fi
-                  sleep 1
-              done
-          fi
-  
-          # Remove runner from GitHub
-          # We need RUNNER_ALLOW_RUNASROOT=1 to remove as root, just like when we configured it
-          if RUNNER_ALLOW_RUNASROOT=1 ./config.sh remove --token test-token-xyz; then
-              echo "[$(date)] Runner removed from GitHub successfully"
-          else
-              echo "[$(date)] Failed to remove runner from GitHub"
-          fi
-      fi
-  
-      # Flush CloudWatch logs before shutdown
-      echo "[$(date)] Flushing CloudWatch logs"
-      sync
-      sleep 5
-  
-      sudo shutdown -h now "Runner terminating after idle timeout"
-  else
-      echo "[$(date)] Activity detected within ${CURRENT_GRACE_PERIOD} seconds, not terminating"
-  fi
-  EOFT
-  
-  chmod +x /usr/local/bin/job-started-hook.sh /usr/local/bin/job-completed-hook.sh /usr/local/bin/check-runner-termination.sh
-  
-  # Set up runner hooks
-  echo "ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/job-started-hook.sh" > .env
-  echo "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/job-completed-hook.sh" >> .env
-  echo "RUNNER_HOME=/home/test-user" >> .env
-  echo "RUNNER_GRACE_PERIOD=60" >> .env
-  
-  # Set up job tracking directory
-  mkdir -p /var/run/github-runner-jobs
-  
-  # Create initial activity timestamp
-  touch /var/run/github-runner-last-activity
-  
-  # Set up periodic termination check using systemd
-  cat > /etc/systemd/system/runner-termination-check.service << 'EOF'
-  [Unit]
-  Description=Check GitHub runner termination conditions
-  After=network.target
-  
-  [Service]
-  Type=oneshot
-  ExecStart=/usr/local/bin/check-runner-termination.sh
-  EOF
-  
-  cat > /etc/systemd/system/runner-termination-check.timer << 'EOF'
-  [Unit]
-  Description=Periodic GitHub runner termination check
-  Requires=runner-termination-check.service
-  
-  [Timer]
-  OnBootSec=60s
-  OnUnitActiveSec=30s
-  
-  [Install]
-  WantedBy=timers.target
-  EOF
-  
-  # Enable and start the timer
-  systemctl daemon-reload
-  systemctl enable runner-termination-check.timer
-  systemctl start runner-termination-check.timer
-  
-  # Get instance metadata for descriptive runner name
-  INSTANCE_ID=$(wget -q -O - http://169.254.169.254/latest/meta-data/instance-id || echo "unknown")
-  INSTANCE_TYPE=$(wget -q -O - http://169.254.169.254/latest/meta-data/instance-type || echo "unknown")
-  
-  # Create runner name with just the instance ID for uniqueness
-  RUNNER_NAME="ec2-${INSTANCE_ID}"
-  
-  # Build additional labels with metadata for easier correlation
-  # These will be visible in the GitHub runner management UI
-  METADATA_LABELS=""
-  METADATA_LABELS="${METADATA_LABELS},instance-id:${INSTANCE_ID}"
-  METADATA_LABELS="${METADATA_LABELS},instance-type:${INSTANCE_TYPE}"
-  
-  # Add GitHub workflow metadata passed from the action
-  if [ -n "test-workflow" ]; then
-      # Replace spaces and special chars in workflow name for label compatibility
-      WORKFLOW_LABEL=$(echo "test-workflow" | tr ' /' '-' | tr -cd '[:alnum:]-_')
-      METADATA_LABELS="${METADATA_LABELS},workflow:${WORKFLOW_LABEL}"
-  fi
-  if [ -n "123456789" ]; then
-      METADATA_LABELS="${METADATA_LABELS},run-id:123456789"
-  fi
-  if [ -n "42" ]; then
-      METADATA_LABELS="${METADATA_LABELS},run-number:42"
-  fi
-  
-  # Combine provided labels (user + runner-xxx) with instance metadata labels
-  # The test-label variable already contains user labels and the critical runner-xxx label from Python
-  ALL_LABELS="test-label${METADATA_LABELS}"
-  
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Configuring runner for repo: test-org/test-repo"
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Runner name: ${RUNNER_NAME}"
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Labels: ${ALL_LABELS}"
-  ./config.sh --url https://github.com/test-org/test-repo --token test-token-xyz --labels "${ALL_LABELS}" --name "${RUNNER_NAME}" --disableupdate
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting runner"
-  # Create marker file for cleanup service
-  touch /var/run/github-runner-started
-  # Ensure CloudWatch agent can read diagnostic logs
-  # The cwagent user needs to traverse into /home/test-user to reach _diag
-  # Make /home/test-user world-executable (but not readable) so cwagent can traverse it
-  chmod o+x /home/test-user
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Made /home/test-user traversable for CloudWatch agent"
-  # Create _diag directory if it doesn't exist
-  mkdir -p /home/test-user/_diag
-  # The _diag files are already world-readable by default, just ensure the directory is too
-  chmod 755 /home/test-user/_diag
-  ./run.sh
-  
+  # Make it executable and run it
+  chmod +x /tmp/runner-setup.sh
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Executing runner setup script" | tee -a /var/log/runner-setup.log
+  exec /tmp/runner-setup.sh
   '''
 # ---
 # name: test_build_user_data_with_cloudwatch
@@ -360,354 +289,67 @@
   #!/bin/bash
   set -e
   
+  # Essential variables from template substitution
+  export debug=""
+  export homedir="/home/ec2-user"
+  export repo="omsf-eco-infra/awsinfratesting"
+  export runner_tokens="test"
+  export runner_labels="label"
+  export cloudwatch_logs_group="/aws/ec2/github-runners"
+  export runner_grace_period="61"
+  export runner_initial_grace_period="181"
+  export runner_poll_interval="11"
+  export runner_registration_timeout="300"
+  export max_instance_lifetime="360"
+  export runners_per_instance="1"
+  export runner_release="test.tar.gz"
+  export ssh_pubkey=""
+  export instance_name=""
+  export action_sha="abc123def456789012345678901234567890abcd"
   
+  # Custom userdata from user (if any)
+  export userdata=""
+  export script="echo 'Hello, World!'"
   
-  # Set up maximum lifetime timeout - do this early to ensure cleanup
-  MAX_LIFETIME_MINUTES=360
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Setting up maximum lifetime timeout: ${MAX_LIFETIME_MINUTES} minutes"
-  nohup bash -c "sleep ${MAX_LIFETIME_MINUTES}m && echo '[$(date)] Maximum lifetime reached' && shutdown -h now" > /var/log/max-lifetime.log 2>&1 &
+  # Log prefixes
+  export log_prefix_job_started="Job started:"
+  export log_prefix_job_completed="Job completed:"
   
-  # Configure CloudWatch Logs if enabled
-  if [ "/aws/ec2/github-runners" != "" ]; then
-      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Installing CloudWatch agent"
-      # Use a subshell to prevent CloudWatch failures from stopping the entire script
-      (
+  # Fetch and execute the main script from GitHub
+  # action_sha has already been resolved from action_ref in Python for security and consistency
+  SCRIPT_URL="https://raw.githubusercontent.com/Open-Athena/ec2-gha/${action_sha}/src/ec2_gha/scripts/runner-setup.sh"
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Fetching main script from: $SCRIPT_URL (SHA: ${action_sha})" | tee -a /var/log/runner-setup.log
   
-      # Wait for dpkg lock to be released (up to 2 minutes)
-      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Waiting for dpkg lock to be released..."
-      timeout=120
-      while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
-          if [ $timeout -le 0 ]; then
-              echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: dpkg lock timeout, proceeding anyway"
-              break
-          fi
-          echo "[$(date '+%Y-%m-%d %H:%M:%S')] dpkg is locked, waiting... ($timeout seconds remaining)"
-          sleep 5
-          timeout=$((timeout - 5))
-      done
+  # Try to download with retries
+  for i in {1..5}; do
+    if curl -sSL "$SCRIPT_URL" -o /tmp/runner-setup.sh; then
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Successfully downloaded runner setup script (attempt $i)" | tee -a /var/log/runner-setup.log
+      break
+    elif wget -q "$SCRIPT_URL" -O /tmp/runner-setup.sh; then
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Successfully downloaded runner setup script (attempt $i)" | tee -a /var/log/runner-setup.log
+      break
+    else
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failed to download script (attempt $i), retrying..." | tee -a /var/log/runner-setup.log
+      sleep 2
+    fi
   
-      # Download and install CloudWatch agent
-      wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
-      dpkg -i -E ./amazon-cloudwatch-agent.deb
-      rm amazon-cloudwatch-agent.deb
+    if [ $i -eq 5 ]; then
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Failed to download runner setup script after 5 attempts" | tee -a /var/log/runner-setup.log
+      shutdown -h now
+      exit 1
+    fi
+  done
   
-      # Configure CloudWatch agent
-      cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'EOF'
-  {
-    "agent": {
-      "run_as_user": "cwagent"
-    },
-    "logs": {
-      "logs_collected": {
-        "files": {
-          "collect_list": [
-            {
-              "file_path": "/var/log/runner-setup.log",
-              "log_group_name": "/aws/ec2/github-runners",
-              "log_stream_name": "{instance_id}/runner-setup",
-              "timezone": "UTC"
-            },
-            {
-              "file_path": "/tmp/job-started-hook.log",
-              "log_group_name": "/aws/ec2/github-runners",
-              "log_stream_name": "{instance_id}/job-started",
-              "timezone": "UTC"
-            },
-            {
-              "file_path": "/tmp/job-completed-hook.log",
-              "log_group_name": "/aws/ec2/github-runners",
-              "log_stream_name": "{instance_id}/job-completed",
-              "timezone": "UTC"
-            },
-            {
-              "file_path": "/tmp/termination-check.log",
-              "log_group_name": "/aws/ec2/github-runners",
-              "log_stream_name": "{instance_id}/termination",
-              "timezone": "UTC"
-            },
-            {
-              "file_path": "/home/test-user/_diag/Runner_**.log",
-              "log_group_name": "/aws/ec2/github-runners",
-              "log_stream_name": "{instance_id}/runner-diag",
-              "timezone": "UTC"
-            },
-            {
-              "file_path": "/home/test-user/_diag/Worker_**.log",
-              "log_group_name": "/aws/ec2/github-runners",
-              "log_stream_name": "{instance_id}/worker-diag",
-              "timezone": "UTC"
-            }
-          ]
-        }
-      }
-    }
-  }
-  EOF
-  
-      # Start CloudWatch agent
-      /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
-          -a fetch-config \
-          -m ec2 \
-          -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json \
-          -s
-  
-      echo "[$(date '+%Y-%m-%d %H:%M:%S')] CloudWatch agent started"
-      ) || echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: CloudWatch agent installation failed, continuing without it"
+  # Verify we got something
+  if [ ! -s /tmp/runner-setup.sh ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Downloaded script is empty" | tee -a /var/log/runner-setup.log
+    shutdown -h now
+    exit 1
   fi
   
-  # Configure SSH access if public key provided
-  if [ -n "" ]; then
-      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Configuring SSH access"
-  
-      # Determine the default user based on the home directory owner
-      DEFAULT_USER=$(stat -c "%U" "/home/test-user" 2>/dev/null || echo "root")
-  
-      # Create .ssh directory if it doesn't exist
-      mkdir -p "/home/test-user/.ssh"
-      chmod 700 "/home/test-user/.ssh"
-  
-      # Add the public key to authorized_keys
-      echo "" >> "/home/test-user/.ssh/authorized_keys"
-      chmod 600 "/home/test-user/.ssh/authorized_keys"
-  
-      # Set proper ownership
-      if [ "$DEFAULT_USER" != "root" ]; then
-          chown -R "$DEFAULT_USER:$DEFAULT_USER" "/home/test-user/.ssh"
-      fi
-  
-      echo "[$(date '+%Y-%m-%d %H:%M:%S')] SSH key added for user $DEFAULT_USER"
-  fi
-  
-  # Redirect runner setup logs to a file for CloudWatch
-  exec >> /var/log/runner-setup.log 2>&1
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] GitHub runner setup starting"
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Working directory: /home/test-user"
-  cd "/home/test-user"
-  echo "echo 'test script'" > pre-runner-script.sh
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running pre-runner script"
-  source pre-runner-script.sh
-  export RUNNER_ALLOW_RUNASROOT=1
-  # We will get the latest release from the GitHub API
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Downloading runner from: https://example.com/runner.tar.gz"
-  curl -L https://example.com/runner.tar.gz -o runner.tar.gz
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Extracting runner"
-  # `--no-overwrite-dir` is important, otherwise `/home/test-user` ends up `chown`'d to `1001:docker`, and `sshd` will refuse connection attempts to `/home/test-user`
-  tar --no-overwrite-dir -xzf runner.tar.gz
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Setting up job tracking scripts"
-  # Create minimal job tracking scripts inline
-  cat > /usr/local/bin/job-started-hook.sh << 'EOFS'
-  #!/bin/bash
-  exec >> /tmp/job-started-hook.log 2>&1
-  echo "[$(date)] Job STARTED  : ${GITHUB_WORKFLOW}/${GITHUB_JOB} (Run: ${GITHUB_RUN_ID}/${GITHUB_RUN_NUMBER}, Attempt: ${GITHUB_RUN_ATTEMPT})"
-  echo "  Repository: ${GITHUB_REPOSITORY}"
-  echo "  Runner: ${RUNNER_NAME}"
-  JOB_TRACK_DIR="/var/run/github-runner-jobs"
-  mkdir -p "${JOB_TRACK_DIR}"
-  echo "{\"job_id\":\"${GITHUB_JOB}\",\"run_id\":\"${GITHUB_RUN_ID}\",\"workflow\":\"${GITHUB_WORKFLOW}\",\"status\":\"running\"}" > "${JOB_TRACK_DIR}/${GITHUB_RUN_ID}-${GITHUB_JOB}.job"
-  # Update activity timestamp
-  touch /var/run/github-runner-last-activity
-  EOFS
-  
-  cat > /usr/local/bin/job-completed-hook.sh << 'EOFC'
-  #!/bin/bash
-  exec >> /tmp/job-completed-hook.log 2>&1
-  echo "[$(date)] Job COMPLETED: ${GITHUB_WORKFLOW}/${GITHUB_JOB} (Run: ${GITHUB_RUN_ID}/${GITHUB_RUN_NUMBER}, Attempt: ${GITHUB_RUN_ATTEMPT})"
-  echo "  Repository: ${GITHUB_REPOSITORY}"
-  echo "  Runner: ${RUNNER_NAME}"
-  JOB_TRACK_DIR="/var/run/github-runner-jobs"
-  if [ -f "${JOB_TRACK_DIR}/${GITHUB_RUN_ID}-${GITHUB_JOB}.job" ]; then
-      sed -i 's/"status":"running"/"status":"completed"/' "${JOB_TRACK_DIR}/${GITHUB_RUN_ID}-${GITHUB_JOB}.job"
-  fi
-  # Count remaining running jobs
-  RUNNING_JOBS=$(grep -l '"status":"running"' "${JOB_TRACK_DIR}"/*.job 2>/dev/null | wc -l || echo 0)
-  echo "  Running jobs remaining: ${RUNNING_JOBS}"
-  # Update activity timestamp
-  touch /var/run/github-runner-last-activity
-  EOFC
-  
-  cat > /usr/local/bin/check-runner-termination.sh << 'EOFT'
-  #!/bin/bash
-  exec >> /tmp/termination-check.log 2>&1
-  echo "[$(date)] Checking termination conditions"
-  
-  ACTIVITY_FILE="/var/run/github-runner-last-activity"
-  GRACE_PERIOD="${RUNNER_GRACE_PERIOD:-120}"
-  INITIAL_GRACE_PERIOD="${RUNNER_INITIAL_GRACE_PERIOD:-180}"
-  JOB_TRACK_DIR="/var/run/github-runner-jobs"
-  
-  # Check if activity file exists
-  if [ ! -f "${ACTIVITY_FILE}" ]; then
-      echo "[$(date)] WARNING: No activity file found, creating it now"
-      touch "${ACTIVITY_FILE}"
-  fi
-  
-  # Get last activity time and current time
-  LAST_ACTIVITY=$(stat -c %Y "${ACTIVITY_FILE}" 2>/dev/null || echo 0)
-  NOW=$(date +%s)
-  IDLE_TIME=$((NOW - LAST_ACTIVITY))
-  
-  # Check if any jobs have ever run
-  if ls "${JOB_TRACK_DIR}"/*.job 2>/dev/null | grep -q .; then
-      JOBS_HAVE_RUN=true
-      CURRENT_GRACE_PERIOD="${GRACE_PERIOD}"
-  else
-      JOBS_HAVE_RUN=false
-      CURRENT_GRACE_PERIOD="${INITIAL_GRACE_PERIOD}"
-  fi
-  
-  echo "[$(date)] Last activity: $(date -d @${LAST_ACTIVITY} '+%Y-%m-%d %H:%M:%S')"
-  echo "[$(date)] Current time: $(date '+%Y-%m-%d %H:%M:%S')"
-  echo "[$(date)] Idle time: ${IDLE_TIME} seconds (grace period: ${CURRENT_GRACE_PERIOD} seconds)"
-  echo "[$(date)] Jobs have run: ${JOBS_HAVE_RUN}"
-  
-  # Check for running jobs first
-  RUNNING_JOBS=$(grep -l '"status":"running"' "${JOB_TRACK_DIR}"/*.job 2>/dev/null | wc -l || echo 0)
-  echo "[$(date)] Running jobs: ${RUNNING_JOBS}"
-  
-  # Show status of each job for debugging
-  echo "[$(date)] Current job files:"
-  for job_file in "${JOB_TRACK_DIR}"/*.job; do
-      if [ -f "${job_file}" ]; then
-          job_status=$(grep -o '"status":"[^"]*"' "${job_file}" || echo "unknown")
-          echo "[$(date)]   $(basename "${job_file}"): ${job_status}"
-      fi
-  done || echo "[$(date)]   No job files found"
-  
-  # Never terminate if jobs are running
-  if [ "${RUNNING_JOBS}" -gt 0 ]; then
-      echo "[$(date)] Jobs are still running, not checking idle time"
-  elif [ "${IDLE_TIME}" -gt "${CURRENT_GRACE_PERIOD}" ]; then
-      echo "[$(date)] No running jobs and no activity for ${IDLE_TIME} seconds, proceeding with termination"
-  
-      # Try to remove runner from GitHub first
-      if [ -f "/home/test-user/config.sh" ]; then
-          echo "[$(date)] Removing runner from GitHub"
-          cd "/home/test-user"
-          # Stop the runner service
-          RUNNER_PID=$(pgrep -f "Runner.Listener" | head -1)
-          if [ -n "${RUNNER_PID}" ]; then
-              echo "[$(date)] Stopping runner PID ${RUNNER_PID}"
-              kill -INT "${RUNNER_PID}" 2>/dev/null || true
-              # Wait for it to stop
-              for i in {1..10}; do
-                  if ! kill -0 "${RUNNER_PID}" 2>/dev/null; then
-                      echo "[$(date)] Runner stopped"
-                      break
-                  fi
-                  sleep 1
-              done
-          fi
-  
-          # Remove runner from GitHub
-          # We need RUNNER_ALLOW_RUNASROOT=1 to remove as root, just like when we configured it
-          if RUNNER_ALLOW_RUNASROOT=1 ./config.sh remove --token test-token-xyz; then
-              echo "[$(date)] Runner removed from GitHub successfully"
-          else
-              echo "[$(date)] Failed to remove runner from GitHub"
-          fi
-      fi
-  
-      # Flush CloudWatch logs before shutdown
-      echo "[$(date)] Flushing CloudWatch logs"
-      sync
-      sleep 5
-  
-      sudo shutdown -h now "Runner terminating after idle timeout"
-  else
-      echo "[$(date)] Activity detected within ${CURRENT_GRACE_PERIOD} seconds, not terminating"
-  fi
-  EOFT
-  
-  chmod +x /usr/local/bin/job-started-hook.sh /usr/local/bin/job-completed-hook.sh /usr/local/bin/check-runner-termination.sh
-  
-  # Set up runner hooks
-  echo "ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/job-started-hook.sh" > .env
-  echo "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/job-completed-hook.sh" >> .env
-  echo "RUNNER_HOME=/home/test-user" >> .env
-  echo "RUNNER_GRACE_PERIOD=30" >> .env
-  
-  # Set up job tracking directory
-  mkdir -p /var/run/github-runner-jobs
-  
-  # Create initial activity timestamp
-  touch /var/run/github-runner-last-activity
-  
-  # Set up periodic termination check using systemd
-  cat > /etc/systemd/system/runner-termination-check.service << 'EOF'
-  [Unit]
-  Description=Check GitHub runner termination conditions
-  After=network.target
-  
-  [Service]
-  Type=oneshot
-  ExecStart=/usr/local/bin/check-runner-termination.sh
-  EOF
-  
-  cat > /etc/systemd/system/runner-termination-check.timer << 'EOF'
-  [Unit]
-  Description=Periodic GitHub runner termination check
-  Requires=runner-termination-check.service
-  
-  [Timer]
-  OnBootSec=60s
-  OnUnitActiveSec=30s
-  
-  [Install]
-  WantedBy=timers.target
-  EOF
-  
-  # Enable and start the timer
-  systemctl daemon-reload
-  systemctl enable runner-termination-check.timer
-  systemctl start runner-termination-check.timer
-  
-  # Get instance metadata for descriptive runner name
-  INSTANCE_ID=$(wget -q -O - http://169.254.169.254/latest/meta-data/instance-id || echo "unknown")
-  INSTANCE_TYPE=$(wget -q -O - http://169.254.169.254/latest/meta-data/instance-type || echo "unknown")
-  
-  # Create runner name with just the instance ID for uniqueness
-  RUNNER_NAME="ec2-${INSTANCE_ID}"
-  
-  # Build additional labels with metadata for easier correlation
-  # These will be visible in the GitHub runner management UI
-  METADATA_LABELS=""
-  METADATA_LABELS="${METADATA_LABELS},instance-id:${INSTANCE_ID}"
-  METADATA_LABELS="${METADATA_LABELS},instance-type:${INSTANCE_TYPE}"
-  
-  # Add GitHub workflow metadata passed from the action
-  if [ -n "test-workflow" ]; then
-      # Replace spaces and special chars in workflow name for label compatibility
-      WORKFLOW_LABEL=$(echo "test-workflow" | tr ' /' '-' | tr -cd '[:alnum:]-_')
-      METADATA_LABELS="${METADATA_LABELS},workflow:${WORKFLOW_LABEL}"
-  fi
-  if [ -n "123456789" ]; then
-      METADATA_LABELS="${METADATA_LABELS},run-id:123456789"
-  fi
-  if [ -n "42" ]; then
-      METADATA_LABELS="${METADATA_LABELS},run-number:42"
-  fi
-  
-  # Combine provided labels (user + runner-xxx) with instance metadata labels
-  # The test-label variable already contains user labels and the critical runner-xxx label from Python
-  ALL_LABELS="test-label${METADATA_LABELS}"
-  
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Configuring runner for repo: test-org/test-repo"
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Runner name: ${RUNNER_NAME}"
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Labels: ${ALL_LABELS}"
-  ./config.sh --url https://github.com/test-org/test-repo --token test-token-xyz --labels "${ALL_LABELS}" --name "${RUNNER_NAME}" --disableupdate
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting runner"
-  # Create marker file for cleanup service
-  touch /var/run/github-runner-started
-  # Ensure CloudWatch agent can read diagnostic logs
-  # The cwagent user needs to traverse into /home/test-user to reach _diag
-  # Make /home/test-user world-executable (but not readable) so cwagent can traverse it
-  chmod o+x /home/test-user
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Made /home/test-user traversable for CloudWatch agent"
-  # Create _diag directory if it doesn't exist
-  mkdir -p /home/test-user/_diag
-  # The _diag files are already world-readable by default, just ensure the directory is too
-  chmod 755 /home/test-user/_diag
-  ./run.sh
-  
+  # Make it executable and run it
+  chmod +x /tmp/runner-setup.sh
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Executing runner setup script" | tee -a /var/log/runner-setup.log
+  exec /tmp/runner-setup.sh
   '''
 # ---

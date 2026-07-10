@@ -1,40 +1,55 @@
 from ec2_gha.start import StartAWS
+from ec2_gha.defaults import (
+    EC2_INSTANCE_TYPE,
+    INSTANCE_COUNT,
+    INSTANCE_NAME,
+    MAX_INSTANCE_LIFETIME,
+    RUNNER_GRACE_PERIOD,
+    RUNNER_INITIAL_GRACE_PERIOD,
+    RUNNER_POLL_INTERVAL,
+    RUNNER_REGISTRATION_TIMEOUT,
+)
 from gha_runner.gh import GitHubInstance
 from gha_runner.clouddeployment import DeployInstance
 from gha_runner.helper.input import EnvVarBuilder, check_required
-import os
+from os import environ
 
 
 def main():
-    env = dict(os.environ)
+    env = dict(environ)
     required = ["GH_PAT", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
     # Check that everything exists
     check_required(env, required)
-    # Timeout for waiting for runner to register with GitHub (default 5 minutes)
-    timeout = int(os.environ.get("INPUT_RUNNER_REGISTRATION_TIMEOUT", "300"))
+    # Timeout for waiting for runner to register with GitHub
+    timeout_str = environ.get("INPUT_RUNNER_REGISTRATION_TIMEOUT", "").strip()
+    timeout = int(timeout_str) if timeout_str else int(RUNNER_REGISTRATION_TIMEOUT)
 
-    token = os.environ["GH_PAT"]
+    token = environ["GH_PAT"]
     # Make a copy of environment variables for immutability
-    env = dict(os.environ)
+    env = dict(environ)
 
     builder = (
         EnvVarBuilder(env)
         .update_state("INPUT_AWS_SUBNET_ID", "subnet_id")
         .update_state("INPUT_AWS_TAGS", "tags", is_json=True)
         .update_state("INPUT_CLOUDWATCH_LOGS_GROUP", "cloudwatch_logs_group")
+        .update_state("INPUT_DEBUG", "debug")
         .update_state("INPUT_EC2_HOME_DIR", "home_dir")
         .update_state("INPUT_EC2_IMAGE_ID", "image_id")
         .update_state("INPUT_EC2_INSTANCE_PROFILE", "iam_instance_profile")
         .update_state("INPUT_EC2_INSTANCE_TYPE", "instance_type")
         .update_state("INPUT_EC2_KEY_NAME", "key_name")
-        .update_state("INPUT_EC2_ROOT_DEVICE_SIZE", "root_device_size", type_hint=int)
+        .update_state("INPUT_EC2_ROOT_DEVICE_SIZE", "root_device_size", type_hint=str)
         .update_state("INPUT_EC2_SECURITY_GROUP_ID", "security_group_id")
         .update_state("INPUT_EC2_USERDATA", "userdata")
         .update_state("INPUT_EXTRA_GH_LABELS", "labels")
         .update_state("INPUT_INSTANCE_COUNT", "instance_count", type_hint=int)
+        .update_state("INPUT_INSTANCE_NAME", "instance_name")
         .update_state("INPUT_MAX_INSTANCE_LIFETIME", "max_instance_lifetime")
         .update_state("INPUT_RUNNER_GRACE_PERIOD", "runner_grace_period")
         .update_state("INPUT_RUNNER_INITIAL_GRACE_PERIOD", "runner_initial_grace_period")
+        .update_state("INPUT_RUNNER_POLL_INTERVAL", "runner_poll_interval")
+        .update_state("INPUT_RUNNERS_PER_INSTANCE", "runners_per_instance", type_hint=int)
         .update_state("INPUT_SSH_PUBKEY", "ssh_pubkey")
         .update_state("AWS_REGION", "region_name")        # default
         .update_state("INPUT_AWS_REGION", "region_name")  # input override
@@ -48,10 +63,41 @@ def main():
     if repo is None:
         raise Exception("Repo cannot be empty")
 
-    # Instance count is not a keyword arg for StartAWS, so we remove it
-    instance_count = params.pop("instance_count")
+    # Instance count and runners_per_instance are not keyword args for StartAWS, so we remove them
+    instance_count = params.pop("instance_count", INSTANCE_COUNT)
+    runners_per_instance = params.pop("runners_per_instance", 1)
+
+    # Apply defaults that weren't set via inputs or vars
+    params.setdefault("max_instance_lifetime", MAX_INSTANCE_LIFETIME)
+    params.setdefault("runner_grace_period", RUNNER_GRACE_PERIOD)
+    params.setdefault("runner_initial_grace_period", RUNNER_INITIAL_GRACE_PERIOD)
+    params.setdefault("runner_poll_interval", RUNNER_POLL_INTERVAL)
+    params.setdefault("instance_name", INSTANCE_NAME)
+    params.setdefault("instance_type", EC2_INSTANCE_TYPE)
+    params.setdefault("region_name", "us-east-1")  # Default AWS region
+
+    # image_id is required - must be provided via input or vars
+    if not params.get("image_id"):
+        raise Exception("EC2 AMI ID (ec2_image_id) must be provided via input or vars.EC2_IMAGE_ID")
+    # home_dir will be set to AUTO in start.py if not provided
 
     gh = GitHubInstance(token=token, repo=repo)
+
+    # Pass runners_per_instance to StartAWS
+    params["runners_per_instance"] = runners_per_instance
+
+    # Generate all the tokens we need upfront
+    # Each instance needs runners_per_instance tokens
+    total_runners = instance_count * runners_per_instance
+    if runners_per_instance > 1:
+        # Generate all tokens upfront
+        all_tokens = gh.create_runner_tokens(total_runners)
+        # Group tokens by instance (each instance gets runners_per_instance tokens)
+        grouped_tokens = []
+        for i in range(0, total_runners, runners_per_instance):
+            grouped_tokens.append(all_tokens[i:i+runners_per_instance])
+        params["grouped_runner_tokens"] = grouped_tokens
+
     # This will create a new instance of StartAWS and configure it correctly
     deployment = DeployInstance(
         provider_type=StartAWS,
