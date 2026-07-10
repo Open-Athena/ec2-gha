@@ -309,7 +309,7 @@ class StartAWS(CreateCloudInstance):
 
         try:
             parsed = Template(template_content)
-            runner_script = parsed.substitute(**kwargs)
+            runner_script = parsed.substitute(**kwargs).rstrip()
 
             # Log the final size for informational purposes
             script_size = len(runner_script)
